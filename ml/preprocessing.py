@@ -11,11 +11,20 @@ ENGINEERED_FEATURES = [
 
 def preprocess_transaction(data):
     """
-    Preprocess one transaction in the same way
-    as the training dataset.
+    Preprocess one transaction (a dict) the same way
+    as the training dataset. Used at prediction time.
     """
-
     df = pd.DataFrame([data])
+    return preprocess_dataframe(df)
+
+
+def preprocess_dataframe(df):
+    """
+    Same feature engineering as preprocess_transaction, but for a full
+    dataframe (many rows) instead of a single transaction. Used during
+    training, so train and predict never drift apart.
+    """
+    df = df.copy()
 
     # Feature engineering
     df["balance_change_orig"] = (

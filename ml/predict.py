@@ -1,12 +1,18 @@
 import joblib
 import pandas as pd
+from pathlib import Path
 
 from preprocessing import preprocess_transaction
 
 
-MODEL_PATH = "../model/fraud_model.pkl"
-FEATURES_PATH = "../model/feature_columns.pkl"
-THRESHOLD_PATH = "../model/threshold.pkl"
+# __file__-based paths: work no matter where the script is run from,
+# and no matter which folder predict.py itself lives in — only its
+# position relative to model/ matters. Adjust the number of .parent
+# calls if you move predict.py to a different folder depth.
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_PATH = BASE_DIR / "ml" / "model" / "fraud_model.pkl"
+FEATURES_PATH = BASE_DIR / "ml" / "model" / "feature_columns.pkl"
+THRESHOLD_PATH = BASE_DIR / "ml" / "model" / "threshold.pkl"
 
 model = joblib.load(MODEL_PATH)
 feature_columns = joblib.load(FEATURES_PATH)
