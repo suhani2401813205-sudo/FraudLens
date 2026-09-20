@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FraudLens — Network View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* Page-specific bits, small enough not to warrant editing the shared stylesheet */
+  .ring-search{
+    width:100%; margin-bottom:10px; padding:7px 10px; border-radius:6px;
+    border:1px solid var(--border); background:var(--surface-2); color:var(--text);
+    font-size:12.5px; font-family:inherit;
+  }
+  .ring-status{font-size:10px; font-weight:600; padding:2px 7px; border-radius:10px;}
+  .ring-status.active{background:rgba(67,203,180,0.14); color:var(--risk-low);}
+  .ring-status.dormant{background:var(--surface-2); color:var(--text-faint);}
+  .ring-stats-row{display:flex; gap:12px; margin-top:4px; font-size:11px; color:var(--text-faint);}
+  .ring-timeline{margin-top:6px;}
+  .account-panel{padding:16px 20px; border-top:1px solid var(--border);}
+  .account-panel-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .account-panel-title{font-family:'JetBrains Mono',monospace; font-size:13px;}
+  .link-btn{background:none; border:none; color:var(--accent); font-size:12px; cursor:pointer; font-family:inherit; padding:0;}
+  .legend{display:flex; gap:16px; font-size:11px; color:var(--text-faint); margin-bottom:10px;}
+  .legend span{display:inline-flex; align-items:center; gap:5px;}
+  .legend .swatch{width:10px; height:10px; display:inline-block;}
+
+  /* Left column (graph + summary) stacked, right column (search + list) fixed width */
+  .network-layout{display:grid; grid-template-columns:1fr 300px; gap:20px; align-items:start;}
+  .graph-column{display:flex; flex-direction:column; gap:20px;}
+
+  .ring-summary-head{display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);}
+  .ring-summary-kpis{display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--border);}
+  .ring-summary-kpi{background:var(--surface); padding:12px 16px;}
+  .ring-summary-kpi-label{font-size:10.5px; color:var(--text-faint); margin-bottom:4px;}
+  .ring-summary-kpi-value{font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:500;}
+
+  .ring-edges-table{width:100%; border-collapse:collapse;}
+  .ring-edges-table th{text-align:left; font-size:10.5px; color:var(--text-faint); font-weight:500; padding:8px 16px; border-bottom:1px solid var(--border); background:var(--surface-2);}
+  .ring-edges-table td{padding:9px 16px; border-bottom:1px solid var(--border-soft); font-size:12.5px;}
+  .ring-edges-table tr{cursor:pointer;}
+  .ring-edges-table tr:hover{background:var(--surface-2);}
+  .ring-edges-table tr.largest td{color:var(--text);}
+  .ring-edges-table tr.largest{background:rgba(229,72,77,0.06);}
+
+  /* Graph interactivity */
+  .graph-edge{transition:opacity .15s ease, stroke-width .15s ease;}
+  .graph-edge.dimmed{opacity:0.12 !important;}
+  .graph-edge.highlighted{opacity:1 !important; stroke-width:3.5 !important;}
+  .graph-node{transition:opacity .15s ease;}
+  .graph-node.dimmed{opacity:0.25;}
+</style>
+</head>
+<body data-page="network">
+<div class="app">
+
+  <div class="sidebar">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+        <circle cx="11" cy="11" r="8" stroke="#43CBB4" stroke-width="2"/>
+        <line x1="16.8" y1="16.8" x2="22" y2="22" stroke="#43CBB4" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-name">FraudLens</span>
+    </div>
+    <div class="nav">
+      <a class="nav-item" data-page="monitor" href="index.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+        Live Monitor
+      </a>
+      <a class="nav-item" data-page="detail" href="transaction.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M7 21h10a2 2 0 002-2V7l-4-4H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        Transaction Detail
+      </a>
+      <a class="nav-item" data-page="network" href="network.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2L10 16M15.8 7.2L14 16M8.3 6h7.4"/></svg>
+        Network View
+      </a>
+      <a class="nav-item" data-page="rules" href="rules.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/></svg>
+        Alerts &amp; Rules
+      </a>
+    </div>
+    <div class="sidebar-foot">
+      <div class="org">NovaBank</div>
+      <div>Analyst · S. Patil</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">NovaBank · <strong>Network View</strong></div>
+      <div class="topbar-right">
+        <span class="live-dot offline" id="live-dot"><span class="pulse"></span><span id="stream-status-text">Connecting...</span></span>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="section-head">
+        <div class="section-title">Fraud ring network</div>
+        <div class="section-note" id="ring-count-note">Grouped from high-risk transactions seen this session — heuristic, not GNN-based</div>
+      </div>
+      <div class="network-layout">
+        <div class="graph-column">
+          <div class="graph-panel" id="graph-panel">
+            <div class="legend" id="graph-legend" style="display:none;">
+              <span><span class="swatch" style="border-radius:50%; background:rgba(229,72,77,0.25); border:1.5px solid #E5484D;"></span>Customer account</span>
+              <span><span class="swatch" style="background:rgba(227,167,62,0.25); border:1.5px solid #E3A73E;"></span>Merchant account</span>
+              <span><span class="swatch" style="height:2px; background:#E5484D; align-self:center;"></span>Largest transfer in ring</span>
+              <span style="margin-left:auto;">Hover a node to trace its connections · click for its transaction list</span>
+            </div>
+            <div class="empty-state" id="graph-empty">No rings yet — rings form once two or more high-risk transactions share an account. Run the replay script to generate live traffic.</div>
+            <svg width="100%" height="100%" viewBox="0 0 560 420" id="graph-svg" style="display:none;"></svg>
+          </div>
+
+          <div class="panel" id="ring-summary-panel" style="display:none;">
+            <div class="ring-summary-head">
+              <div>
+                <div class="section-title" style="font-size:14px;" id="summary-ring-id">—</div>
+                <div class="section-note" id="summary-ring-window">—</div>
+              </div>
+              <span class="ring-status" id="summary-ring-status">—</span>
+            </div>
+            <div class="ring-summary-kpis">
+              <div class="ring-summary-kpi"><div class="ring-summary-kpi-label">Accounts</div><div class="ring-summary-kpi-value" id="summary-accounts">—</div></div>
+              <div class="ring-summary-kpi"><div class="ring-summary-kpi-label">Connections</div><div class="ring-summary-kpi-value" id="summary-connections">—</div></div>
+              <div class="ring-summary-kpi"><div class="ring-summary-kpi-label">Total moved</div><div class="ring-summary-kpi-value" id="summary-total" style="font-size:13px;">—</div></div>
+              <div class="ring-summary-kpi"><div class="ring-summary-kpi-label">Avg risk</div><div class="ring-summary-kpi-value" id="summary-avg-risk">—</div></div>
+              <div class="ring-summary-kpi"><div class="ring-summary-kpi-label">Time span</div><div class="ring-summary-kpi-value" id="summary-span">—</div></div>
+            </div>
+            <div class="section-head" style="padding:16px 20px 0 20px;">
+              <div class="section-title" style="font-size:13px;">Transactions in this ring</div>
+              <button class="link-btn" id="summary-export-btn">Export CSV</button>
+            </div>
+            <table class="ring-edges-table">
+              <thead><tr><th>Step</th><th>Type</th><th>Flow</th><th>Amount</th><th>Risk</th></tr></thead>
+              <tbody id="summary-edges-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel" id="side-panel">
+          <div style="padding:12px 12px 0 12px;">
+            <input class="ring-search" id="ring-search" placeholder="Filter rings by account ID...">
+          </div>
+          <div class="ring-list" id="ring-list"></div>
+          <div id="account-panel-slot"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script src="js/live-store.js"></script>
+<script>
+  // ---------- Heuristic ring-building via union-find ----------
+  // NOTE: this groups accounts that share a HIGH-risk transaction into
+  // a "ring" — it's a simple connected-components heuristic, not the
+  // GNN-based fraud ring detection described in the project plan.
+  // Good enough to demo the concept; label it honestly either way.
+  class UnionFind {
+    constructor() { this.parent = new Map(); }
+    find(x) {
+      if (!this.parent.has(x)) this.parent.set(x, x);
+      if (this.parent.get(x) !== x) this.parent.set(x, this.find(this.parent.get(x)));
+      return this.parent.get(x);
+    }
+    union(a, b) {
+      const ra = this.find(a), rb = this.find(b);
+      if (ra !== rb) this.parent.set(ra, rb);
+    }
+  }
+
+  const ACTIVE_WINDOW_MS = 60_000; // a ring is "Active" if a new transaction joined it in the last 60s of real time
+  const ringRegistry = new Map(); // stableKey (sorted account list) -> { id, firstSeenAt, lastUpdatedAt, edgeCount }
+  let nextRingNumber = 1;
+
+  function buildRings(transactions) {
+    const highRisk = transactions.filter((t) => (t.risk_score || 0) >= 75);
+    const uf = new UnionFind();
+    highRisk.forEach((t) => uf.union(t.nameOrig, t.nameDest));
+
+    const groups = new Map(); // root -> { nodes:Set, edges:[] }
+    highRisk.forEach((t) => {
+      const root = uf.find(t.nameOrig);
+      if (!groups.has(root)) groups.set(root, { nodes: new Set(), edges: [] });
+      const g = groups.get(root);
+      g.nodes.add(t.nameOrig);
+      g.nodes.add(t.nameDest);
+      g.edges.push(t);
+    });
+
+    const now = Date.now();
+
+    const rings = [...groups.values()]
+      .filter((g) => g.edges.length >= 2) // a single isolated high-risk transaction isn't a "ring" on its own
+      .map((g) => {
+        const nodes = [...g.nodes];
+        const stableKey = [...nodes].sort().join("|");
+
+        // Stable ID across refreshes: a ring keeps its name even as more
+        // transactions join it, instead of renumbering every time.
+        if (!ringRegistry.has(stableKey)) {
+          ringRegistry.set(stableKey, {
+            id: `RING-${String(nextRingNumber++).padStart(3, "0")}`,
+            firstSeenAt: now,
+            lastUpdatedAt: now,
+            edgeCount: 0,
+          });
+        }
+        const meta = ringRegistry.get(stableKey);
+        if (g.edges.length > meta.edgeCount) {
+          meta.lastUpdatedAt = now; // a new transaction joined this ring just now
+          meta.edgeCount = g.edges.length;
+        }
+
+        const steps = g.edges.map((e) => e.step);
+        const totalAmount = g.edges.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const avgRisk = g.edges.reduce((sum, e) => sum + (e.risk_score || 0), 0) / g.edges.length;
+        const largestTxn = g.edges.reduce((max, e) => (Number(e.amount) > Number(max.amount) ? e : max), g.edges[0]);
+
+        return {
+          id: meta.id,
+          stableKey,
+          nodes,
+          edges: g.edges,
+          totalAmount,
+          avgRisk,
+          largestTxn,
+          minStep: Math.min(...steps),
+          maxStep: Math.max(...steps),
+          spanSteps: Math.max(...steps) - Math.min(...steps),
+          isActive: (now - meta.lastUpdatedAt) < ACTIVE_WINDOW_MS,
+        };
+      })
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+
+    return rings;
+  }
+
+  let currentRings = [];
+  let selectedRingId = null;
+  let selectedAccount = null;
+  let ringFilter = "";
+
+  function isMerchant(accountId) {
+    return String(accountId).startsWith("M");
+  }
+
+  function ringTimelineSvg(ring) {
+    const w = 140, h = 14;
+    const range = Math.max(ring.maxStep - ring.minStep, 1);
+    const ticks = ring.edges.map((e) => {
+      const x = ((e.step - ring.minStep) / range) * (w - 8) + 4;
+      const color = (e.risk_score || 0) >= 75 ? "#E5484D" : "#E3A73E";
+      return `<circle cx="${x}" cy="${h / 2}" r="3" fill="${color}"/>`;
+    }).join("");
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+      <line x1="4" y1="${h / 2}" x2="${w - 4}" y2="${h / 2}" stroke="var(--border)" stroke-width="1.5"/>
+      ${ticks}
+    </svg>`;
+  }
+
+  function renderRingList() {
+    const listEl = document.getElementById("ring-list");
+    const filtered = ringFilter
+      ? currentRings.filter((r) => r.nodes.some((n) => n.toLowerCase().includes(ringFilter.toLowerCase())))
+      : currentRings;
+
+    if (!filtered.length) {
+      listEl.innerHTML = `<div class="empty-state">${currentRings.length ? "No rings match that account." : "No rings formed yet."}</div>`;
+      return;
+    }
+    listEl.innerHTML = filtered.map((ring) => `
+      <div class="ring-item ${ring.id === selectedRingId ? "selected" : ""}" onclick="selectRing('${ring.id}')">
+        <div class="ring-item-top">
+          <span class="ring-name">${ring.id}</span>
+          <span class="ring-status ${ring.isActive ? "active" : "dormant"}">${ring.isActive ? "Active" : "Dormant"}</span>
+        </div>
+        <div class="ring-meta">${ring.nodes.length} accounts · ${ring.edges.length} connections · ${formatINR(ring.totalAmount)} moved</div>
+        <div class="ring-stats-row">
+          <span>Avg risk: ${ring.avgRisk.toFixed(0)}%</span>
+          <span>Span: ${ring.spanSteps}h</span>
+        </div>
+        <div class="ring-timeline">${ringTimelineSvg(ring)}</div>
+        <button class="link-btn" style="margin-top:6px;" onclick="event.stopPropagation(); exportRingCsv('${ring.id}')">Export CSV</button>
+      </div>
+    `).join("");
+  }
+
+  function renderGraph(ring) {
+    const svg = document.getElementById("graph-svg");
+    const empty = document.getElementById("graph-empty");
+    const legend = document.getElementById("graph-legend");
+    if (!ring) {
+      svg.style.display = "none";
+      empty.style.display = "block";
+      legend.style.display = "none";
+      return;
+    }
+    svg.style.display = "block";
+    empty.style.display = "none";
+    legend.style.display = "flex";
+
+    const cx = 280, cy = 210, radius = 140;
+    const positions = {};
+    ring.nodes.forEach((node, i) => {
+      const angle = (2 * Math.PI * i) / ring.nodes.length - Math.PI / 2;
+      positions[node] = { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+    });
+
+    const defs = `<defs>
+      <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" fill="#E5484D"/>
+      </marker>
+    </defs>`;
+
+    let edgesSvg = "";
+    ring.edges.forEach((e, i) => {
+      const a = positions[e.nameOrig], b = positions[e.nameDest];
+      if (!a || !b) return;
+      const isLargest = e === ring.largestTxn;
+      // Pull the line endpoints in slightly so the arrowhead doesn't hide under the node circle
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const x2 = b.x - (dx / len) * 20, y2 = b.y - (dy / len) * 20;
+      edgesSvg += `<line class="graph-edge" data-from="${e.nameOrig}" data-to="${e.nameDest}"
+        x1="${a.x}" y1="${a.y}" x2="${x2}" y2="${y2}"
+        stroke="#E5484D" stroke-width="${isLargest ? 3 : 1.5}" opacity="${isLargest ? 0.9 : 0.5}"
+        marker-end="url(#arrowhead)">
+        <title>step-${e.step}: ${e.nameOrig} → ${e.nameDest}\n${formatINR(e.amount)} · risk ${e.risk_score}% · ${e.type}</title>
+      </line>`;
+    });
+
+    let nodesSvg = "";
+    ring.nodes.forEach((node) => {
+      const p = positions[node];
+      const label = node.length > 9 ? node.slice(0, 8) + "…" : node;
+      const merchant = isMerchant(node);
+      const sent = ring.edges.filter((e) => e.nameOrig === node).reduce((s, e) => s + Number(e.amount), 0);
+      const received = ring.edges.filter((e) => e.nameDest === node).reduce((s, e) => s + Number(e.amount), 0);
+      const shape = merchant
+        ? `<rect x="${p.x - 16}" y="${p.y - 16}" width="32" height="32" rx="4" fill="rgba(227,167,62,0.18)" stroke="#E3A73E" stroke-width="1.5"/>`
+        : `<circle cx="${p.x}" cy="${p.y}" r="18" fill="rgba(229,72,77,0.14)" stroke="#E5484D" stroke-width="1.5"/>`;
+      nodesSvg += `
+        <g class="graph-node" data-account="${node}"
+           onmouseenter="highlightAccount('${node}')" onmouseleave="clearHighlight()"
+           onclick="selectAccount('${node}')" style="cursor:pointer;">
+          <title>${node}${merchant ? " (merchant)" : ""}\nSent: ${formatINR(sent)}\nReceived: ${formatINR(received)}</title>
+          ${shape}
+          <text x="${p.x}" y="${p.y + 4}" text-anchor="middle" fill="#E7ECF3" font-size="9" font-family="JetBrains Mono">${label}</text>
+        </g>
+      `;
+    });
+
+    svg.innerHTML = defs + edgesSvg + nodesSvg;
+  }
+
+  function highlightAccount(accountId) {
+    document.querySelectorAll(".graph-edge").forEach((el) => {
+      const connected = el.dataset.from === accountId || el.dataset.to === accountId;
+      el.classList.toggle("highlighted", connected);
+      el.classList.toggle("dimmed", !connected);
+    });
+    document.querySelectorAll(".graph-node").forEach((el) => {
+      const connected = el.dataset.account === accountId ||
+        [...document.querySelectorAll(".graph-edge.highlighted")].some(
+          (e) => e.dataset.from === el.dataset.account || e.dataset.to === el.dataset.account
+        );
+      el.classList.toggle("dimmed", !connected);
+    });
+  }
+
+  function clearHighlight() {
+    document.querySelectorAll(".graph-edge").forEach((el) => el.classList.remove("highlighted", "dimmed"));
+    document.querySelectorAll(".graph-node").forEach((el) => el.classList.remove("dimmed"));
+  }
+
+  function renderSummary(ring) {
+    const panel = document.getElementById("ring-summary-panel");
+    if (!ring) {
+      panel.style.display = "none";
+      return;
+    }
+    panel.style.display = "block";
+
+    document.getElementById("summary-ring-id").textContent = ring.id;
+    document.getElementById("summary-ring-window").textContent = `steps ${ring.minStep}–${ring.maxStep}`;
+    const statusEl = document.getElementById("summary-ring-status");
+    statusEl.textContent = ring.isActive ? "Active" : "Dormant";
+    statusEl.className = `ring-status ${ring.isActive ? "active" : "dormant"}`;
+
+    document.getElementById("summary-accounts").textContent = ring.nodes.length;
+    document.getElementById("summary-connections").textContent = ring.edges.length;
+    document.getElementById("summary-total").textContent = formatINR(ring.totalAmount);
+    document.getElementById("summary-avg-risk").textContent = `${ring.avgRisk.toFixed(0)}%`;
+    document.getElementById("summary-span").textContent = `${ring.spanSteps}h`;
+
+    const sortedEdges = [...ring.edges].sort((a, b) => a.step - b.step);
+    document.getElementById("summary-edges-body").innerHTML = sortedEdges.map((e) => {
+      const riskCls = riskPillClass(e.risk_score || 0);
+      return `
+        <tr class="${e === ring.largestTxn ? "largest" : ""}" onclick='goToDetail(${JSON.stringify(e)})'>
+          <td class="mono">${e.step}</td>
+          <td>${e.type}</td>
+          <td class="flow"><span class="acct">${e.nameOrig}</span><span class="arrow">→</span><span class="acct">${e.nameDest}</span></td>
+          <td class="amount">${formatINR(e.amount)}</td>
+          <td><span class="pill ${riskCls}"><span class="dot"></span>${e.risk_score}%</span></td>
+        </tr>`;
+    }).join("");
+
+    document.getElementById("summary-export-btn").onclick = () => exportRingCsv(ring.id);
+  }
+
+  function selectRing(id) {
+    selectedRingId = id;
+    selectedAccount = null;
+    document.getElementById("account-panel-slot").innerHTML = "";
+    renderRingList();
+    const ring = currentRings.find((r) => r.id === id);
+    renderGraph(ring);
+    renderSummary(ring);
+  }
+
+  function selectAccount(accountId) {
+    selectedAccount = accountId;
+    const ring = currentRings.find((r) => r.id === selectedRingId);
+    if (!ring) return;
+
+    const related = ring.edges.filter((e) => e.nameOrig === accountId || e.nameDest === accountId);
+    const slot = document.getElementById("account-panel-slot");
+    slot.innerHTML = `
+      <div class="account-panel">
+        <div class="account-panel-head">
+          <span class="account-panel-title">${accountId}</span>
+          <button class="link-btn" onclick="document.getElementById('account-panel-slot').innerHTML=''">Close</button>
+        </div>
+        ${related.map((e) => `
+          <div class="field-row" style="cursor:pointer;" onclick='goToDetail(${JSON.stringify(e)})'>
+            <span class="field-label mono">step-${e.step} · ${e.nameOrig}→${e.nameDest}</span>
+            <span class="field-value">${formatINR(e.amount)}</span>
+          </div>
+        `).join("")}
+        <div class="section-note" style="margin-top:8px;">${related.length} transaction(s) involving this account in this ring — click one to open its full detail.</div>
+      </div>
+    `;
+  }
+
+  function exportRingCsv(ringId) {
+    const ring = currentRings.find((r) => r.id === ringId);
+    if (!ring) return;
+
+    const header = "step,type,amount,nameOrig,nameDest,risk_score,prediction\n";
+    const rows = ring.edges.map((e) =>
+      [e.step, e.type, e.amount, e.nameOrig, e.nameDest, e.risk_score, e.prediction].join(",")
+    ).join("\n");
+
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${ringId}-transactions.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function refresh() {
+    const all = getStoredTransactions();
+    currentRings = buildRings(all);
+    document.getElementById("ring-count-note").textContent =
+      `${currentRings.length} ring(s) grouped from ${all.filter(t => (t.risk_score||0) >= 75).length} high-risk transactions this session — heuristic, not GNN-based`;
+
+    if (!currentRings.find((r) => r.id === selectedRingId)) {
+      selectedRingId = currentRings.length ? currentRings[0].id : null;
+      selectedAccount = null;
+      document.getElementById("account-panel-slot").innerHTML = "";
+    }
+    renderRingList();
+    const ring = currentRings.find((r) => r.id === selectedRingId);
+    renderGraph(ring);
+    renderSummary(ring);
+  }
+
+  document.getElementById("ring-search").addEventListener("input", (e) => {
+    ringFilter = e.target.value.trim();
+    renderRingList();
+  });
+
+  document.addEventListener("fraudlens:init", refresh);
+  document.addEventListener("fraudlens:transaction", refresh);
+</script>
+</body>
+</html>

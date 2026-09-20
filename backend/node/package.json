@@ -1,0 +1,20 @@
+{
+  "name": "fraudlens-backend",
+  "version": "1.0.0",
+  "description": "FraudLens Express API - calls the Flask ML service and streams results to the dashboard via Socket.io",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

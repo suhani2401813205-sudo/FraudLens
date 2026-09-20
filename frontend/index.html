@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FraudLens — NovaBank</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F17;
+    --surface:#121A27;
+    --surface-2:#19222F;
+    --border:#242E3D;
+    --border-soft:#1B2432;
+    --text:#E7ECF3;
+    --text-muted:#8996AA;
+    --text-faint:#5C6981;
+    --accent:#43CBB4;
+    --accent-dim:rgba(67,203,180,0.14);
+    --risk-low:#43CBB4;
+    --risk-low-bg:rgba(67,203,180,0.12);
+    --risk-medium:#E3A73E;
+    --risk-medium-bg:rgba(227,167,62,0.12);
+    --risk-high:#E5484D;
+    --risk-high-bg:rgba(229,72,77,0.14);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex; min-height:100vh;}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width:220px;
+    flex-shrink:0;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    padding:24px 16px;
+    display:flex;
+    flex-direction:column;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:0 8px 24px 8px;
+    margin-bottom:20px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .brand svg{flex-shrink:0;}
+  .brand-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:17px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  .nav{display:flex; flex-direction:column; gap:2px;}
+  .nav-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:9px 10px;
+    border-radius:6px;
+    color:var(--text-muted);
+    font-size:13.5px;
+    font-weight:500;
+    cursor:pointer;
+    border:none;
+    background:none;
+    text-align:left;
+    width:100%;
+    font-family:inherit;
+    transition:background .12s ease, color .12s ease;
+  }
+  .nav-item svg{flex-shrink:0; opacity:0.85;}
+  .nav-item:hover{background:var(--surface-2); color:var(--text);}
+  .nav-item.active{background:var(--accent-dim); color:var(--accent);}
+  .nav-item.active svg{opacity:1;}
+  .sidebar-foot{
+    margin-top:auto;
+    padding-top:16px;
+    border-top:1px solid var(--border-soft);
+    font-size:12px;
+    color:var(--text-faint);
+  }
+  .sidebar-foot .org{color:var(--text-muted); font-weight:500; margin-bottom:2px;}
+
+  /* ---------- Main ---------- */
+  .main{flex:1; min-width:0; display:flex; flex-direction:column;}
+  .topbar{
+    height:56px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 28px;
+    flex-shrink:0;
+  }
+  .topbar-title{font-size:13px; color:var(--text-muted);}
+  .topbar-title strong{color:var(--text); font-weight:600;}
+  .topbar-right{display:flex; align-items:center; gap:16px;}
+  .search{
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:6px 10px;
+    font-size:12.5px;
+    color:var(--text-faint);
+    width:200px;
+  }
+  .live-dot{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:12px;
+    color:var(--risk-low);
+    font-weight:500;
+  }
+  .live-dot .pulse{
+    width:6px; height:6px; border-radius:50%; background:var(--risk-low);
+  }
+
+  .page{padding:28px; display:none;}
+  .page.active{display:block;}
+
+  /* ---------- KPI row ---------- */
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px;}
+  .kpi{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:16px 18px;
+  }
+  .kpi-label{font-size:12px; color:var(--text-muted); margin-bottom:8px;}
+  .kpi-value{
+    font-family:'JetBrains Mono',monospace;
+    font-size:24px;
+    font-weight:500;
+    letter-spacing:-0.01em;
+  }
+  .kpi-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
+  .kpi.high .kpi-value{color:var(--risk-high);}
+
+  /* ---------- Section ---------- */
+  .section-head{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .section-title{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:15px;
+    font-weight:600;
+  }
+  .section-note{font-size:12px; color:var(--text-faint);}
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    overflow:hidden;
+  }
+
+  /* ---------- Feed table ---------- */
+  table{width:100%; border-collapse:collapse;}
+  thead th{
+    text-align:left;
+    font-size:11px;
+    color:var(--text-faint);
+    font-weight:500;
+    padding:10px 16px;
+    border-bottom:1px solid var(--border);
+    background:var(--surface-2);
+  }
+  tbody td{
+    padding:11px 16px;
+    border-bottom:1px solid var(--border-soft);
+    font-size:13px;
+    vertical-align:middle;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr{cursor:pointer; transition:background .1s ease;}
+  tbody tr:hover{background:var(--surface-2);}
+  .mono{font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--text-muted);}
+  .amount{font-family:'JetBrains Mono',monospace; font-weight:500;}
+
+  .pill{
+    display:inline-flex; align-items:center; gap:5px;
+    padding:3px 9px; border-radius:20px;
+    font-size:11px; font-weight:600;
+  }
+  .pill.low{background:var(--risk-low-bg); color:var(--risk-low);}
+  .pill.medium{background:var(--risk-medium-bg); color:var(--risk-medium);}
+  .pill.high{background:var(--risk-high-bg); color:var(--risk-high);}
+  .pill .dot{width:5px; height:5px; border-radius:50%; background:currentColor;}
+
+  .flow{display:flex; align-items:center; gap:6px; font-size:12.5px;}
+  .flow .acct{font-family:'JetBrains Mono',monospace; color:var(--text);}
+  .flow .arrow{color:var(--text-faint);}
+
+  /* ---------- Page 2: Transaction detail ---------- */
+  .detail-grid{display:grid; grid-template-columns:1.4fr 1fr; gap:20px;}
+  .detail-header{
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:20px; border-bottom:1px solid var(--border);
+  }
+  .detail-id{font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text-muted); margin-bottom:6px;}
+  .detail-amount{font-family:'JetBrains Mono',monospace; font-size:28px; font-weight:500;}
+  .detail-body{padding:20px;}
+  .field-row{
+    display:flex; justify-content:space-between;
+    padding:10px 0; border-bottom:1px solid var(--border-soft);
+    font-size:13px;
+  }
+  .field-row:last-child{border-bottom:none;}
+  .field-label{color:var(--text-faint);}
+  .field-value{font-family:'JetBrains Mono',monospace; color:var(--text);}
+
+  .explain-block{
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:14px 16px;
+    margin:16px 20px;
+    font-size:13px;
+    line-height:1.65;
+    color:var(--text);
+  }
+  .explain-block .tag{
+    font-size:10.5px; font-weight:600; color:var(--accent);
+    margin-bottom:6px; display:block;
+  }
+
+  .factor{display:flex; align-items:center; gap:10px; padding:9px 20px;}
+  .factor-name{flex:1; font-size:12.5px; color:var(--text-muted);}
+  .factor-bar-track{width:110px; height:6px; background:var(--surface-2); border-radius:3px; overflow:hidden;}
+  .factor-bar-fill{height:100%; background:var(--risk-high); border-radius:3px;}
+  .factor-val{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text-faint); width:36px; text-align:right;}
+
+  .action-row{display:flex; gap:10px; padding:18px 20px; border-top:1px solid var(--border);}
+  .btn{
+    padding:8px 16px; border-radius:6px; font-size:12.5px; font-weight:600;
+    border:1px solid var(--border); background:var(--surface-2); color:var(--text);
+    cursor:pointer; font-family:inherit;
+  }
+  .btn.primary{background:var(--risk-high); border-color:var(--risk-high); color:#0B0F17;}
+  .btn.ghost{background:transparent;}
+
+  /* ---------- Page 3: Network ---------- */
+  .network-layout{display:grid; grid-template-columns:1fr 300px; gap:20px;}
+  .graph-panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:20px;
+    height:480px;
+  }
+  .ring-list{padding:8px;}
+  .ring-item{
+    padding:12px; border-radius:6px; margin-bottom:6px;
+    border:1px solid var(--border-soft);
+    cursor:pointer;
+  }
+  .ring-item.selected{border-color:var(--risk-high); background:var(--risk-high-bg);}
+  .ring-item-top{display:flex; justify-content:space-between; margin-bottom:4px;}
+  .ring-name{font-size:12.5px; font-weight:600;}
+  .ring-meta{font-size:11px; color:var(--text-faint);}
+
+  /* ---------- Page 4: Alerts & Rules ---------- */
+  .rules-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:20px;}
+  .rule-row{display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--border-soft);}
+  .rule-row:last-child{border-bottom:none;}
+  .rule-name{font-size:13px; font-weight:500;}
+  .rule-desc{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+  .toggle{
+    width:34px; height:18px; border-radius:10px; background:var(--accent);
+    position:relative; flex-shrink:0;
+  }
+  .toggle::after{content:''; position:absolute; width:14px; height:14px; border-radius:50%; background:#0B0F17; top:2px; right:2px;}
+  .toggle.off{background:var(--border);}
+  .toggle.off::after{left:2px; right:auto; background:var(--text-faint);}
+  .threshold-tag{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text-muted); background:var(--surface-2); padding:3px 8px; border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= SIDEBAR ================= -->
+  <div class="sidebar">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+        <circle cx="11" cy="11" r="8" stroke="#43CBB4" stroke-width="2"/>
+        <line x1="16.8" y1="16.8" x2="22" y2="22" stroke="#43CBB4" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-name">FraudLens</span>
+    </div>
+    <div class="nav">
+      <button class="nav-item active" onclick="showPage('monitor', this)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+        Live Monitor
+      </button>
+      <button class="nav-item" onclick="showPage('detail', this)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M7 21h10a2 2 0 002-2V7l-4-4H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        Transaction Detail
+      </button>
+      <button class="nav-item" onclick="showPage('network', this)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2L10 16M15.8 7.2L14 16M8.3 6h7.4"/></svg>
+        Network View
+      </button>
+      <button class="nav-item" onclick="showPage('rules', this)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/></svg>
+        Alerts &amp; Rules
+      </button>
+    </div>
+    <div class="sidebar-foot">
+      <div class="org">NovaBank</div>
+      <div>Analyst · S. Patil</div>
+    </div>
+  </div>
+
+  <!-- ================= MAIN ================= -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">NovaBank · <strong>Live Transaction Monitor</strong></div>
+      <div class="topbar-right">
+        <span class="live-dot"><span class="pulse"></span>Stream active</span>
+        <input class="search" placeholder="Search account or txn ID">
+      </div>
+    </div>
+
+    <!-- ========== PAGE 1: LIVE MONITOR ========== -->
+    <div class="page active" id="page-monitor">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">Transactions / hour</div>
+          <div class="kpi-value" id="kpi-total">0</div>
+          <div class="kpi-sub" id="kpi-step">waiting for stream...</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Flagged (last hour)</div>
+          <div class="kpi-value" id="kpi-flagged">0</div>
+          <div class="kpi-sub" id="kpi-flagged-pct">0% of volume</div>
+        </div>
+        <div class="kpi high">
+          <div class="kpi-label">Active fraud rings</div>
+          <div class="kpi-value">6</div>
+          <div class="kpi-sub">3 new since last shift</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Model recall</div>
+          <div class="kpi-value">94.2%</div>
+          <div class="kpi-sub">on held-out test set</div>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <div class="section-title">Live risk feed</div>
+        <div class="section-note" id="stream-status">Connecting to stream...</div>
+      </div>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Transaction</th><th>Flow</th><th>Amount</th><th>Type</th><th>Risk</th></tr>
+          </thead>
+          <tbody id="live-feed-body">
+            <tr onclick="showPage('detail', document.querySelectorAll('.nav-item')[1])">
+              <td class="mono">14:02:11</td>
+              <td class="mono">TXN-88213</td>
+              <td class="flow"><span class="acct">C-4471</span><span class="arrow">→</span><span class="acct">C-9053</span></td>
+              <td class="amount">₹4,82,300</td>
+              <td>TRANSFER</td>
+              <td><span class="pill high"><span class="dot"></span>High</span></td>
+            </tr>
+            <tr>
+              <td class="mono">14:02:08</td>
+              <td class="mono">TXN-88212</td>
+              <td class="flow"><span class="acct">C-1187</span><span class="arrow">→</span><span class="acct">M-2290</span></td>
+              <td class="amount">₹1,240</td>
+              <td>PAYMENT</td>
+              <td><span class="pill low"><span class="dot"></span>Low</span></td>
+            </tr>
+            <tr>
+              <td class="mono">14:02:04</td>
+              <td class="mono">TXN-88211</td>
+              <td class="flow"><span class="acct">C-9053</span><span class="arrow">→</span><span class="acct">C-3310</span></td>
+              <td class="amount">₹4,79,800</td>
+              <td>CASH_OUT</td>
+              <td><span class="pill high"><span class="dot"></span>High</span></td>
+            </tr>
+            <tr>
+              <td class="mono">14:01:59</td>
+              <td class="mono">TXN-88210</td>
+              <td class="flow"><span class="acct">C-6620</span><span class="arrow">→</span><span class="acct">C-1122</span></td>
+              <td class="amount">₹38,900</td>
+              <td>TRANSFER</td>
+              <td><span class="pill medium"><span class="dot"></span>Medium</span></td>
+            </tr>
+            <tr>
+              <td class="mono">14:01:52</td>
+              <td class="mono">TXN-88209</td>
+              <td class="flow"><span class="acct">C-7734</span><span class="arrow">→</span><span class="acct">M-0041</span></td>
+              <td class="amount">₹610</td>
+              <td>PAYMENT</td>
+              <td><span class="pill low"><span class="dot"></span>Low</span></td>
+            </tr>
+            <tr>
+              <td class="mono">14:01:47</td>
+              <td class="mono">TXN-88208</td>
+              <td class="flow"><span class="acct">C-2201</span><span class="arrow">→</span><span class="acct">C-8890</span></td>
+              <td class="amount">₹15,000</td>
+              <td>CASH_IN</td>
+              <td><span class="pill low"><span class="dot"></span>Low</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ========== PAGE 2: TRANSACTION DETAIL ========== -->
+    <div class="page" id="page-detail">
+      <div class="detail-grid">
+        <div class="panel">
+          <div class="detail-header">
+            <div>
+              <div class="detail-id" id="detail-id">No transaction selected</div>
+              <div class="detail-amount" id="detail-amount">—</div>
+            </div>
+            <span class="pill low" id="detail-risk-pill"><span class="dot"></span>—</span>
+          </div>
+
+          <div class="explain-block">
+            <span class="tag">WHY THIS WAS FLAGGED</span>
+            <span id="detail-explanation">Click a transaction in the Live Monitor feed to see its details here.</span>
+          </div>
+
+          <div class="section-head" style="padding:0 20px;">
+            <div class="section-title" style="font-size:13px;">Contributing factors</div>
+            <div class="section-note" style="font-size:11px;">Heuristic signals — not yet SHAP-based</div>
+          </div>
+          <div class="factor">
+            <span class="factor-name">Amount vs. sender's balance before</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" id="factor-amount-bar" style="width:0%;"></div></div>
+            <span class="factor-val" id="factor-amount-val">—</span>
+          </div>
+          <div class="factor">
+            <span class="factor-name">Sender account emptied</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" id="factor-emptied-bar" style="width:0%;"></div></div>
+            <span class="factor-val" id="factor-emptied-val">—</span>
+          </div>
+          <div class="factor">
+            <span class="factor-name">Balance/amount mismatch</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" id="factor-mismatch-bar" style="width:0%;"></div></div>
+            <span class="factor-val" id="factor-mismatch-val">—</span>
+          </div>
+          <div class="factor">
+            <span class="factor-name">Model risk score</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" id="factor-risk-bar" style="width:0%;"></div></div>
+            <span class="factor-val" id="factor-risk-val">—</span>
+          </div>
+
+          <div class="action-row">
+            <button class="btn primary" onclick="handleAction('Hold transaction')">Hold transaction</button>
+            <button class="btn" onclick="handleAction('Send for review')">Send for review</button>
+            <button class="btn ghost" onclick="handleAction('Mark as false positive')">Mark as false positive</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-head" style="padding:16px 20px 0 20px;">
+            <div class="section-title" style="font-size:13px;">Transaction fields</div>
+          </div>
+          <div class="detail-body">
+            <div class="field-row"><span class="field-label">Type</span><span class="field-value" id="field-type">—</span></div>
+            <div class="field-row"><span class="field-label">Step (hour)</span><span class="field-value" id="field-step">—</span></div>
+            <div class="field-row"><span class="field-label">Sender balance before</span><span class="field-value" id="field-orig-before">—</span></div>
+            <div class="field-row"><span class="field-label">Sender balance after</span><span class="field-value" id="field-orig-after">—</span></div>
+            <div class="field-row"><span class="field-label">Receiver balance before</span><span class="field-value" id="field-dest-before">—</span></div>
+            <div class="field-row"><span class="field-label">Receiver balance after</span><span class="field-value" id="field-dest-after">—</span></div>
+            <div class="field-row"><span class="field-label">Destination type</span><span class="field-value" id="field-dest-type">—</span></div>
+            <div class="field-row"><span class="field-label">Part of ring</span><span class="field-value" id="field-ring" style="color:var(--text-faint);">Not yet implemented</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== PAGE 3: NETWORK VIEW ========== -->
+    <div class="page" id="page-network">
+      <div class="section-head">
+        <div class="section-title">Fraud ring network</div>
+        <div class="section-note">6 active rings · showing RING-014</div>
+      </div>
+      <div class="network-layout">
+        <div class="graph-panel">
+          <svg width="100%" height="100%" viewBox="0 0 560 420">
+            <line x1="280" y1="90" x2="140" y2="200" stroke="#E5484D" stroke-width="1.5" opacity="0.6"/>
+            <line x1="280" y1="90" x2="420" y2="200" stroke="#E5484D" stroke-width="1.5" opacity="0.6"/>
+            <line x1="140" y1="200" x2="280" y2="320" stroke="#E5484D" stroke-width="1.5" opacity="0.6"/>
+            <line x1="420" y1="200" x2="280" y2="320" stroke="#E5484D" stroke-width="1.5" opacity="0.6"/>
+            <line x1="140" y1="200" x2="70" y2="320" stroke="#242E3D" stroke-width="1.5"/>
+            <line x1="420" y1="200" x2="490" y2="320" stroke="#242E3D" stroke-width="1.5"/>
+
+            <circle cx="280" cy="90" r="20" fill="rgba(229,72,77,0.14)" stroke="#E5484D" stroke-width="1.5"/>
+            <text x="280" y="95" text-anchor="middle" fill="#E7ECF3" font-size="11" font-family="JetBrains Mono">C-9053</text>
+
+            <circle cx="140" cy="200" r="18" fill="rgba(229,72,77,0.14)" stroke="#E5484D" stroke-width="1.5"/>
+            <text x="140" y="204" text-anchor="middle" fill="#E7ECF3" font-size="10" font-family="JetBrains Mono">C-4471</text>
+
+            <circle cx="420" cy="200" r="18" fill="rgba(229,72,77,0.14)" stroke="#E5484D" stroke-width="1.5"/>
+            <text x="420" y="204" text-anchor="middle" fill="#E7ECF3" font-size="10" font-family="JetBrains Mono">C-3310</text>
+
+            <circle cx="280" cy="320" r="18" fill="rgba(229,72,77,0.14)" stroke="#E5484D" stroke-width="1.5"/>
+            <text x="280" y="324" text-anchor="middle" fill="#E7ECF3" font-size="10" font-family="JetBrains Mono">C-1122</text>
+
+            <circle cx="70" cy="320" r="14" fill="var(--surface-2)" stroke="#5C6981" stroke-width="1.5"/>
+            <text x="70" y="324" text-anchor="middle" fill="#8996AA" font-size="9" font-family="JetBrains Mono">C-6620</text>
+
+            <circle cx="490" cy="320" r="14" fill="var(--surface-2)" stroke="#5C6981" stroke-width="1.5"/>
+            <text x="490" y="324" text-anchor="middle" fill="#8996AA" font-size="9" font-family="JetBrains Mono">C-8890</text>
+          </svg>
+        </div>
+        <div class="panel ring-list">
+          <div class="ring-item selected">
+            <div class="ring-item-top"><span class="ring-name">RING-014</span><span class="pill high"><span class="dot"></span>High</span></div>
+            <div class="ring-meta">4 accounts · ₹18.7L moved · forming over 6h</div>
+          </div>
+          <div class="ring-item">
+            <div class="ring-item-top"><span class="ring-name">RING-011</span><span class="pill medium"><span class="dot"></span>Medium</span></div>
+            <div class="ring-meta">3 accounts · ₹4.2L moved · forming over 2h</div>
+          </div>
+          <div class="ring-item">
+            <div class="ring-item-top"><span class="ring-name">RING-009</span><span class="pill medium"><span class="dot"></span>Medium</span></div>
+            <div class="ring-meta">5 accounts · ₹9.8L moved · forming over 11h</div>
+          </div>
+          <div class="ring-item">
+            <div class="ring-item-top"><span class="ring-name">RING-006</span><span class="pill low"><span class="dot"></span>Low</span></div>
+            <div class="ring-meta">3 accounts · ₹1.1L moved · dormant 4h</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== PAGE 4: ALERTS & RULES ========== -->
+    <div class="page" id="page-rules">
+      <div class="section-head">
+        <div class="section-title">Alert tiers</div>
+        <div class="section-note">Action taken automatically per tier</div>
+      </div>
+      <div class="panel">
+        <div class="rule-row">
+          <div><div class="rule-name">Low</div><div class="rule-desc">Logged only, visible in feed, no action taken</div></div>
+          <span class="threshold-tag">score &lt; 0.4</span>
+        </div>
+        <div class="rule-row">
+          <div><div class="rule-name">Medium</div><div class="rule-desc">Queued for analyst review within 1 hour</div></div>
+          <span class="threshold-tag">0.4 – 0.75</span>
+        </div>
+        <div class="rule-row">
+          <div><div class="rule-name">High</div><div class="rule-desc">Transaction auto-held pending manual release</div></div>
+          <span class="threshold-tag">score &gt; 0.75</span>
+        </div>
+      </div>
+
+      <div class="rules-grid">
+        <div class="panel">
+          <div class="section-head" style="padding:16px 18px 0 18px;"><div class="section-title" style="font-size:13px;">Detection models</div></div>
+          <div class="rule-row">
+            <div><div class="rule-name">Autoencoder (anomaly)</div><div class="rule-desc">Flags individual transactions</div></div>
+            <div class="toggle"></div>
+          </div>
+          <div class="rule-row">
+            <div><div class="rule-name">GNN ring detection</div><div class="rule-desc">Flags connected account networks</div></div>
+            <div class="toggle"></div>
+          </div>
+          <div class="rule-row">
+            <div><div class="rule-name">Isolation Forest (baseline)</div><div class="rule-desc">Legacy rule, kept for comparison</div></div>
+            <div class="toggle off"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="section-head" style="padding:16px 18px 0 18px;"><div class="section-title" style="font-size:13px;">Notification routing</div></div>
+          <div class="rule-row">
+            <div><div class="rule-name">Analyst dashboard</div><div class="rule-desc">All tiers</div></div>
+            <div class="toggle"></div>
+          </div>
+          <div class="rule-row">
+            <div><div class="rule-name">Email to fraud team</div><div class="rule-desc">Medium and High only</div></div>
+            <div class="toggle"></div>
+          </div>
+          <div class="rule-row">
+            <div><div class="rule-name">SMS to duty officer</div><div class="rule-desc">High only</div></div>
+            <div class="toggle off"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  function showPage(id, btn){
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + id).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+  }
+
+  // ---------- Live feed wiring (Socket.io -> Node backend) ----------
+  // Change this if the Node backend runs somewhere other than localhost:5000
+  const NODE_URL = "http://localhost:5000";
+
+  let totalCount = 0;
+  let flaggedCount = 0;
+  const MAX_ROWS = 30; // cap the feed so the table doesn't grow forever during a long replay
+
+  function riskPillClass(riskScore) {
+    if (riskScore >= 75) return "high";
+    if (riskScore >= 40) return "medium";
+    return "low";
+  }
+  function riskLabel(cls) {
+    return cls === "high" ? "High" : cls === "medium" ? "Medium" : "Low";
+  }
+  function formatINR(n) {
+    return "₹" + Number(n).toLocaleString("en-IN", {maximumFractionDigits: 0});
+  }
+
+  function addLiveRow(txn) {
+    const tbody = document.getElementById("live-feed-body");
+    const time = new Date().toLocaleTimeString();
+    const riskCls = riskPillClass(txn.risk_score || 0);
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="mono">${time}</td>
+      <td class="mono">step-${txn.step}</td>
+      <td class="flow"><span class="acct">${txn.nameOrig}</span><span class="arrow">→</span><span class="acct">${txn.nameDest}</span></td>
+      <td class="amount">${formatINR(txn.amount)}</td>
+      <td>${txn.type}</td>
+      <td><span class="pill ${riskCls}"><span class="dot"></span>${riskLabel(riskCls)}</span></td>
+    `;
+    // Store the full transaction (with prediction) on the row itself,
+    // so clicking it later can populate the Transaction Detail page
+    // with this exact data — not a generic/static example.
+    row.dataset.txn = JSON.stringify(txn);
+    row.addEventListener("click", () => showDetail(txn));
+    tbody.prepend(row);
+
+    // Trim old rows so the table stays a manageable length during long replays
+    while (tbody.children.length > MAX_ROWS) {
+      tbody.removeChild(tbody.lastChild);
+    }
+
+    totalCount += 1;
+    if (txn.prediction === "Fraud") flaggedCount += 1;
+
+    document.getElementById("kpi-total").textContent = totalCount;
+    document.getElementById("kpi-step").textContent = `step ${txn.step}`;
+    document.getElementById("kpi-flagged").textContent = flaggedCount;
+    const pct = totalCount ? ((flaggedCount / totalCount) * 100).toFixed(1) : "0";
+    document.getElementById("kpi-flagged-pct").textContent = `${pct}% of volume`;
+  }
+
+  // ---------- Transaction Detail wiring ----------
+  // Builds a lightweight heuristic explanation client-side from the raw
+  // transaction fields. This is NOT SHAP — it's a stand-in until the
+  // SHAP explainability layer is wired into predict.py. Labelled as
+  // such in the UI so it isn't mistaken for the real thing.
+  function computeFactors(txn) {
+    const origBefore = Number(txn.oldbalanceOrg) || 0;
+    const origAfter = Number(txn.newbalanceOrig) || 0;
+    const destBefore = Number(txn.oldbalanceDest) || 0;
+    const destAfter = Number(txn.newbalanceDest) || 0;
+    const amount = Number(txn.amount) || 0;
+
+    // How large the amount is relative to the sender's starting balance
+    const amountRatio = origBefore > 0 ? Math.min(amount / origBefore, 1) : (amount > 0 ? 1 : 0);
+
+    // Whether the sender's account was fully drained
+    const emptied = origAfter === 0 && origBefore > 0 ? 1 : 0;
+
+    // Mismatch between the stated amount and the actual balance change
+    // (large mismatch can indicate an inconsistent/suspicious transaction)
+    const expectedChange = origBefore - origAfter;
+    const mismatch = amount > 0 ? Math.min(Math.abs(expectedChange - amount) / amount, 1) : 0;
+
+    return { amountRatio, emptied, mismatch };
+  }
+
+  function showDetail(txn) {
+    const riskScore = txn.risk_score ?? 0;
+    const riskCls = riskPillClass(riskScore);
+    const isMerchant = String(txn.nameDest || "").startsWith("M");
+    const factors = computeFactors(txn);
+
+    document.getElementById("detail-id").textContent =
+      `step-${txn.step} · ${txn.nameOrig} → ${txn.nameDest}`;
+    document.getElementById("detail-amount").textContent = formatINR(txn.amount);
+
+    const pillEl = document.getElementById("detail-risk-pill");
+    pillEl.className = `pill ${riskCls}`;
+    pillEl.innerHTML = `<span class="dot"></span>${riskLabel(riskCls)} risk`;
+
+    // Explanation text built from the same heuristic signals as the factor bars
+    let explanation;
+    if (txn.prediction === "Fraud") {
+      const parts = [];
+      if (factors.amountRatio > 0.7) parts.push("moves nearly all of the sender's available balance");
+      if (factors.emptied) parts.push("drains the sender's account to zero");
+      if (factors.mismatch > 0.3) parts.push("shows a mismatch between the amount and the actual balance change");
+      explanation = parts.length
+        ? `Flagged as fraud (risk ${riskScore}%) — this transaction ${parts.join(", ")}.`
+        : `Flagged as fraud (risk ${riskScore}%) by the model, though no single heuristic signal stands out strongly — likely a learned pattern rather than one of these simple rules.`;
+    } else {
+      explanation = `Not flagged (risk ${riskScore}%) — amount and balance changes are consistent with typical account behavior.`;
+    }
+    document.getElementById("detail-explanation").textContent = explanation;
+
+    // Factor bars (heuristic, 0-1 scale)
+    setFactor("amount", factors.amountRatio);
+    setFactor("emptied", factors.emptied);
+    setFactor("mismatch", factors.mismatch);
+    setFactor("risk", riskScore / 100);
+
+    // Raw fields panel
+    document.getElementById("field-type").textContent = txn.type;
+    document.getElementById("field-step").textContent = txn.step;
+    document.getElementById("field-orig-before").textContent = formatINR(txn.oldbalanceOrg);
+    document.getElementById("field-orig-after").textContent = formatINR(txn.newbalanceOrig);
+    document.getElementById("field-dest-before").textContent = formatINR(txn.oldbalanceDest);
+    document.getElementById("field-dest-after").textContent = formatINR(txn.newbalanceDest);
+    document.getElementById("field-dest-type").textContent = isMerchant ? "Merchant" : "Customer";
+
+    showPage("detail", document.querySelectorAll(".nav-item")[1]);
+  }
+
+  function setFactor(name, value01) {
+    const pct = Math.round(Math.max(0, Math.min(1, value01)) * 100);
+    const bar = document.getElementById(`factor-${name}-bar`);
+    const val = document.getElementById(`factor-${name}-val`);
+    bar.style.width = pct + "%";
+    bar.style.background = pct >= 70 ? "var(--risk-high)" : pct >= 40 ? "var(--risk-medium)" : "var(--risk-low)";
+    val.textContent = (value01).toFixed(2);
+  }
+
+  function handleAction(action) {
+    // No backend endpoint for this yet — placeholder so the buttons
+    // don't feel dead. Wire this to a real Node route when the
+    // analyst-action feature is built.
+    alert(`"${action}" isn't wired to the backend yet — this is a UI placeholder.`);
+  }
+
+  try {
+    const socket = io(NODE_URL);
+    const statusEl = document.getElementById("stream-status");
+
+    socket.on("connect", () => {
+      statusEl.textContent = "Stream connected — waiting for transactions";
+    });
+    socket.on("disconnect", () => {
+      statusEl.textContent = "Stream disconnected — is the Node backend running?";
+    });
+    socket.on("connect_error", () => {
+      statusEl.textContent = `Could not connect to ${NODE_URL} — start the Node backend first`;
+    });
+
+    // routes/predict.js emits io.emit("transaction", {...transaction, ...result})
+    socket.on("transaction", (txn) => {
+      statusEl.textContent = "Replaying held-out transactions in time order";
+      addLiveRow(txn);
+    });
+  } catch (e) {
+    console.error("Socket.io connection failed:", e);
+  }
+</script>
+</body>
+</html>

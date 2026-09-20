@@ -1,0 +1,12 @@
+{
+  "name": "fraudlens-frontend",
+  "version": "1.0.0",
+  "description": "FraudLens frontend — static file server for the dashboard pages",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

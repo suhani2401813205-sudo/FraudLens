@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FraudLens — Live Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="monitor">
+<div class="app">
+
+  <div class="sidebar">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+        <circle cx="11" cy="11" r="8" stroke="#43CBB4" stroke-width="2"/>
+        <line x1="16.8" y1="16.8" x2="22" y2="22" stroke="#43CBB4" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-name">FraudLens</span>
+    </div>
+    <div class="nav">
+      <a class="nav-item" data-page="monitor" href="index.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+        Live Monitor
+      </a>
+      <a class="nav-item" data-page="detail" href="transaction.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M7 21h10a2 2 0 002-2V7l-4-4H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        Transaction Detail
+      </a>
+      <a class="nav-item" data-page="network" href="network.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2L10 16M15.8 7.2L14 16M8.3 6h7.4"/></svg>
+        Network View
+      </a>
+      <a class="nav-item" data-page="rules" href="rules.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/></svg>
+        Alerts &amp; Rules
+      </a>
+    </div>
+    <div class="sidebar-foot">
+      <div class="org">NovaBank</div>
+      <div>Analyst · S. Patil</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">NovaBank · <strong>Live Transaction Monitor</strong></div>
+      <div class="topbar-right">
+        <span class="live-dot offline" id="live-dot"><span class="pulse"></span><span id="stream-status-text">Connecting...</span></span>
+        <input class="search" placeholder="Search account or txn ID" id="search-box">
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">Transactions received</div>
+          <div class="kpi-value" id="kpi-total">0</div>
+          <div class="kpi-sub" id="kpi-step">waiting for stream...</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Flagged as fraud</div>
+          <div class="kpi-value" id="kpi-flagged">0</div>
+          <div class="kpi-sub" id="kpi-flagged-pct">0% of volume</div>
+        </div>
+        <div class="kpi high">
+          <div class="kpi-label">High risk (session)</div>
+          <div class="kpi-value" id="kpi-high">0</div>
+          <div class="kpi-sub">risk score &gt; 75</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Avg risk score</div>
+          <div class="kpi-value" id="kpi-avg-risk">0</div>
+          <div class="kpi-sub">across this session</div>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <div class="panel chart-panel">
+          <div class="chart-panel-title">Fraud vs Normal (cumulative)</div>
+          <canvas id="chart-trend"></canvas>
+        </div>
+        <div class="panel chart-panel">
+          <div class="chart-panel-title">Risk score distribution</div>
+          <canvas id="chart-risk-dist"></canvas>
+        </div>
+        <div class="panel chart-panel">
+          <div class="chart-panel-title">Transaction types seen</div>
+          <canvas id="chart-types"></canvas>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <div class="section-title">Live risk feed</div>
+        <div class="section-note">Click any row to see its full detail</div>
+      </div>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Transaction</th><th>Flow</th><th>Amount</th><th>Type</th><th>Risk</th></tr>
+          </thead>
+          <tbody id="live-feed-body"></tbody>
+        </table>
+        <div class="empty-state" id="empty-state">No transactions yet — run <code>python replay.py</code> in the <code>ml/</code> folder to start the feed.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="js/live-store.js"></script>
+<script>
+  const MAX_ROWS = 30; // cap the on-screen feed so it doesn't grow forever during a long replay
+  let totalCount = 0, flaggedCount = 0, highCount = 0, riskSum = 0;
+  let searchTerm = "";
+
+  // ---------- Chart setup (Chart.js, dark-theme colors matching the dashboard) ----------
+  Chart.defaults.color = "#8996AA";
+  Chart.defaults.borderColor = "#242E3D";
+  Chart.defaults.font.family = "Inter";
+
+  let cumulativeFraud = 0, cumulativeNormal = 0;
+  const trendChart = new Chart(document.getElementById("chart-trend"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "Fraud", data: [], borderColor: "#E5484D", backgroundColor: "rgba(229,72,77,0.1)", tension: 0.3, pointRadius: 0 },
+        { label: "Normal", data: [], borderColor: "#43CBB4", backgroundColor: "rgba(67,203,180,0.1)", tension: 0.3, pointRadius: 0 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 } } } },
+      scales: { x: { display: false }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } },
+    },
+  });
+
+  const RISK_BUCKETS = ["0-10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70-80", "80-90", "90-100"];
+  const riskCounts = new Array(10).fill(0);
+  const riskChart = new Chart(document.getElementById("chart-risk-dist"), {
+    type: "bar",
+    data: { labels: RISK_BUCKETS, datasets: [{ data: riskCounts, backgroundColor: "#43CBB4", borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 9 } } },
+        y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
+      },
+    },
+  });
+
+  const typeCounts = {}; // e.g. { PAYMENT: 12, TRANSFER: 4, ... }
+  const typeChart = new Chart(document.getElementById("chart-types"), {
+    type: "bar",
+    data: { labels: [], datasets: [{ data: [], backgroundColor: "#8996AA", borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 9 } } },
+        y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
+      },
+    },
+  });
+
+  function updateTrendChart(txn) {
+    if (txn.prediction === "Fraud") cumulativeFraud += 1; else cumulativeNormal += 1;
+    trendChart.data.labels.push("");
+    trendChart.data.datasets[0].data.push(cumulativeFraud);
+    trendChart.data.datasets[1].data.push(cumulativeNormal);
+    // Keep the chart from growing unbounded during a long replay
+    if (trendChart.data.labels.length > 100) {
+      trendChart.data.labels.shift();
+      trendChart.data.datasets[0].data.shift();
+      trendChart.data.datasets[1].data.shift();
+    }
+    trendChart.update();
+  }
+
+  function updateRiskChart(txn) {
+    const bucket = Math.min(Math.floor((txn.risk_score || 0) / 10), 9);
+    riskCounts[bucket] += 1;
+    riskChart.update();
+  }
+
+  function updateTypeChart(txn) {
+    typeCounts[txn.type] = (typeCounts[txn.type] || 0) + 1;
+    typeChart.data.labels = Object.keys(typeCounts);
+    typeChart.data.datasets[0].data = Object.values(typeCounts);
+    typeChart.update();
+  }
+
+  function updateCharts(txn) {
+    updateTrendChart(txn);
+    updateRiskChart(txn);
+    updateTypeChart(txn);
+  }
+
+  function matchesSearch(txn) {
+    if (!searchTerm) return true;
+    const s = searchTerm.toLowerCase();
+    return String(txn.nameOrig).toLowerCase().includes(s) ||
+           String(txn.nameDest).toLowerCase().includes(s) ||
+           String(txn.step).includes(s);
+  }
+
+  function renderRow(txn) {
+    const tbody = document.getElementById("live-feed-body");
+    const time = new Date().toLocaleTimeString();
+    const riskCls = riskPillClass(txn.risk_score || 0);
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="mono">${time}</td>
+      <td class="mono">step-${txn.step}</td>
+      <td class="flow"><span class="acct">${txn.nameOrig}</span><span class="arrow">→</span><span class="acct">${txn.nameDest}</span></td>
+      <td class="amount">${formatINR(txn.amount)}</td>
+      <td>${txn.type}</td>
+      <td><span class="pill ${riskCls}"><span class="dot"></span>${riskLabel(riskCls)}</span></td>
+    `;
+    // Every row created here gets a real click handler with its real
+    // transaction data — this is what makes ALL rows clickable, not just some.
+    row.addEventListener("click", () => goToDetail(txn));
+    tbody.appendChild(row);
+    document.getElementById("empty-state").style.display = "none";
+  }
+
+  function updateKPIs() {
+    document.getElementById("kpi-total").textContent = totalCount;
+    document.getElementById("kpi-flagged").textContent = flaggedCount;
+    document.getElementById("kpi-high").textContent = highCount;
+    const pct = totalCount ? ((flaggedCount / totalCount) * 100).toFixed(1) : "0";
+    document.getElementById("kpi-flagged-pct").textContent = `${pct}% of volume`;
+    document.getElementById("kpi-avg-risk").textContent = totalCount ? (riskSum / totalCount).toFixed(1) : "0";
+  }
+
+  function handleTxn(txn) {
+    totalCount += 1;
+    if (txn.prediction === "Fraud") flaggedCount += 1;
+    if ((txn.risk_score || 0) > 75) highCount += 1;
+    riskSum += (txn.risk_score || 0);
+    document.getElementById("kpi-step").textContent = `latest: step ${txn.step}`;
+    updateKPIs();
+    updateCharts(txn);
+
+    if (!matchesSearch(txn)) return;
+    renderRow(txn);
+
+    const tbody = document.getElementById("live-feed-body");
+    while (tbody.children.length > MAX_ROWS) {
+      tbody.removeChild(tbody.firstChild);
+    }
+  }
+
+  // Render whatever was already in the store (e.g. coming back from another page)
+  document.addEventListener("fraudlens:init", (e) => {
+    const existing = e.detail.slice(0, MAX_ROWS).reverse();
+    existing.forEach((txn) => {
+      totalCount += 1;
+      if (txn.prediction === "Fraud") flaggedCount += 1;
+      if ((txn.risk_score || 0) > 75) highCount += 1;
+      riskSum += (txn.risk_score || 0);
+      renderRow(txn);
+      updateCharts(txn);
+    });
+    if (existing.length) {
+      document.getElementById("kpi-step").textContent = `latest: step ${existing[existing.length - 1].step}`;
+    }
+    updateKPIs();
+  });
+
+  // New live transaction arrives
+  document.addEventListener("fraudlens:transaction", (e) => handleTxn(e.detail));
+
+  document.getElementById("search-box").addEventListener("input", (e) => {
+    searchTerm = e.target.value.trim();
+    document.getElementById("live-feed-body").innerHTML = "";
+    getStoredTransactions().slice(0, MAX_ROWS).reverse().forEach((txn) => {
+      if (matchesSearch(txn)) renderRow(txn);
+    });
+  });
+</script>
+</body>
+</html>

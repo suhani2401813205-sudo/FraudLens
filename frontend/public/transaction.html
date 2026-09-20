@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FraudLens — Transaction Detail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="detail">
+<div class="app">
+
+  <div class="sidebar">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+        <circle cx="11" cy="11" r="8" stroke="#43CBB4" stroke-width="2"/>
+        <line x1="16.8" y1="16.8" x2="22" y2="22" stroke="#43CBB4" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-name">FraudLens</span>
+    </div>
+    <div class="nav">
+      <a class="nav-item" data-page="monitor" href="index.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+        Live Monitor
+      </a>
+      <a class="nav-item" data-page="detail" href="transaction.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M7 21h10a2 2 0 002-2V7l-4-4H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        Transaction Detail
+      </a>
+      <a class="nav-item" data-page="network" href="network.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2L10 16M15.8 7.2L14 16M8.3 6h7.4"/></svg>
+        Network View
+      </a>
+      <a class="nav-item" data-page="rules" href="rules.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/></svg>
+        Alerts &amp; Rules
+      </a>
+    </div>
+    <div class="sidebar-foot">
+      <div class="org">NovaBank</div>
+      <div>Analyst · S. Patil</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">NovaBank · <strong>Transaction Detail</strong></div>
+      <div class="topbar-right">
+        <span class="live-dot offline" id="live-dot"><span class="pulse"></span><span id="stream-status-text">Connecting...</span></span>
+      </div>
+    </div>
+
+    <div class="page" id="content-wrap">
+      <!-- Filled by JS: either the real selected transaction, or an empty-state message -->
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script src="js/live-store.js"></script>
+<script>
+  function computeFactors(txn) {
+    const origBefore = Number(txn.oldbalanceOrg) || 0;
+    const origAfter = Number(txn.newbalanceOrig) || 0;
+    const amount = Number(txn.amount) || 0;
+
+    const amountRatio = origBefore > 0 ? Math.min(amount / origBefore, 1) : (amount > 0 ? 1 : 0);
+    const emptied = origAfter === 0 && origBefore > 0 ? 1 : 0;
+    const expectedChange = origBefore - origAfter;
+    const mismatch = amount > 0 ? Math.min(Math.abs(expectedChange - amount) / amount, 1) : 0;
+
+    return { amountRatio, emptied, mismatch };
+  }
+
+  function factorRow(label, value01) {
+    const pct = Math.round(Math.max(0, Math.min(1, value01)) * 100);
+    const color = pct >= 70 ? "var(--risk-high)" : pct >= 40 ? "var(--risk-medium)" : "var(--risk-low)";
+    return `
+      <div class="factor">
+        <span class="factor-name">${label}</span>
+        <div class="factor-bar-track"><div class="factor-bar-fill" style="width:${pct}%; background:${color};"></div></div>
+        <span class="factor-val">${value01.toFixed(2)}</span>
+      </div>`;
+  }
+
+  // Real SHAP-based factors (from predict.py's TreeExplainer). Bar length
+  // is each feature's SHAP magnitude relative to the top feature in this
+  // transaction, direction (red = pushes toward fraud, teal = pushes
+  // toward normal) shown via the label suffix rather than color, since
+  // the existing bar-color scale is reused for magnitude.
+  function shapFactorRow(entry, maxAbsShap) {
+    const magnitude = maxAbsShap > 0 ? Math.abs(entry.shap_value) / maxAbsShap : 0;
+    const pct = Math.round(magnitude * 100);
+    const towardFraud = entry.shap_value > 0;
+    const color = towardFraud ? "var(--risk-high)" : "var(--risk-low)";
+    const direction = towardFraud ? "→ fraud" : "→ normal";
+    return `
+      <div class="factor">
+        <span class="factor-name">${entry.label} <span style="color:${color}; font-size:10.5px;">${direction}</span></span>
+        <div class="factor-bar-track"><div class="factor-bar-fill" style="width:${pct}%; background:${color};"></div></div>
+        <span class="factor-val">${entry.shap_value.toFixed(3)}</span>
+      </div>`;
+  }
+
+  function renderDetail(txn) {
+    const riskScore = txn.risk_score ?? 0;
+    const riskCls = riskPillClass(riskScore);
+    const isMerchant = String(txn.nameDest || "").startsWith("M");
+    const hasShap = Array.isArray(txn.shap_explanation) && txn.shap_explanation.length > 0;
+
+    let explanation, factorsHtml, factorsNote;
+
+    if (hasShap) {
+      const maxAbsShap = Math.max(...txn.shap_explanation.map((e) => Math.abs(e.shap_value)));
+      factorsHtml = txn.shap_explanation.map((e) => shapFactorRow(e, maxAbsShap)).join("");
+      factorsNote = "SHAP feature attribution (RandomForest TreeExplainer)";
+
+      const topPositive = txn.shap_explanation.filter((e) => e.shap_value > 0).slice(0, 2).map((e) => e.label);
+      if (txn.prediction === "Fraud") {
+        explanation = topPositive.length
+          ? `Flagged as fraud (risk ${riskScore}%) — driven mainly by: ${topPositive.join(", ")}.`
+          : `Flagged as fraud (risk ${riskScore}%) by the model.`;
+      } else {
+        explanation = `Not flagged (risk ${riskScore}%) — no feature pushed strongly enough toward fraud.`;
+      }
+    } else {
+      // Fallback for transactions stored before SHAP was added to predict.py
+      const factors = computeFactors(txn);
+      factorsHtml = [
+        factorRow("Amount vs. sender's balance before", factors.amountRatio),
+        factorRow("Sender account emptied", factors.emptied),
+        factorRow("Balance/amount mismatch", factors.mismatch),
+        factorRow("Model risk score", riskScore / 100),
+      ].join("");
+      factorsNote = "Heuristic signals — this transaction predates SHAP integration";
+
+      const parts = [];
+      if (factors.amountRatio > 0.7) parts.push("moves nearly all of the sender's available balance");
+      if (factors.emptied) parts.push("drains the sender's account to zero");
+      if (factors.mismatch > 0.3) parts.push("shows a mismatch between the amount and the actual balance change");
+      explanation = txn.prediction === "Fraud"
+        ? (parts.length
+            ? `Flagged as fraud (risk ${riskScore}%) — this transaction ${parts.join(", ")}.`
+            : `Flagged as fraud (risk ${riskScore}%) by the model.`)
+        : `Not flagged (risk ${riskScore}%) — amount and balance changes are consistent with typical account behavior.`;
+    }
+
+    document.getElementById("content-wrap").innerHTML = `
+      <div class="detail-grid">
+        <div class="panel">
+          <div class="detail-header">
+            <div>
+              <div class="detail-id">step-${txn.step} · ${txn.nameOrig} → ${txn.nameDest}</div>
+              <div class="detail-amount">${formatINR(txn.amount)}</div>
+            </div>
+            <span class="pill ${riskCls}"><span class="dot"></span>${riskLabel(riskCls)} risk</span>
+          </div>
+
+          <div class="explain-block">
+            <span class="tag">WHY THIS WAS FLAGGED</span>
+            <span>${explanation}</span>
+          </div>
+
+          <div class="section-head" style="padding:0 20px;">
+            <div class="section-title" style="font-size:13px;">Contributing factors</div>
+            <div class="section-note" style="font-size:11px;">${factorsNote}</div>
+          </div>
+          ${factorsHtml}
+
+          <div class="action-row">
+            <button class="btn primary" onclick="handleAction('Hold transaction')">Hold transaction</button>
+            <button class="btn" onclick="handleAction('Send for review')">Send for review</button>
+            <button class="btn ghost" onclick="handleAction('Mark as false positive')">Mark as false positive</button>
+          </div>
+          <div id="action-feedback" style="padding:0 20px 16px 20px; font-size:12px; color:var(--text-faint);"></div>
+
+          <div class="section-head" style="padding:0 20px;">
+            <div class="section-title" style="font-size:13px;">Recent actions on this transaction</div>
+          </div>
+          <div id="recent-actions" style="padding:0 20px 16px 20px;">
+            <div class="empty-state" style="padding:16px 0;">No actions taken yet.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-head" style="padding:16px 20px 0 20px;">
+            <div class="section-title" style="font-size:13px;">Transaction fields</div>
+          </div>
+          <div class="detail-body">
+            <div class="field-row"><span class="field-label">Type</span><span class="field-value">${txn.type}</span></div>
+            <div class="field-row"><span class="field-label">Step (hour)</span><span class="field-value">${txn.step}</span></div>
+            <div class="field-row"><span class="field-label">Sender balance before</span><span class="field-value">${formatINR(txn.oldbalanceOrg)}</span></div>
+            <div class="field-row"><span class="field-label">Sender balance after</span><span class="field-value">${formatINR(txn.newbalanceOrig)}</span></div>
+            <div class="field-row"><span class="field-label">Receiver balance before</span><span class="field-value">${formatINR(txn.oldbalanceDest)}</span></div>
+            <div class="field-row"><span class="field-label">Receiver balance after</span><span class="field-value">${formatINR(txn.newbalanceDest)}</span></div>
+            <div class="field-row"><span class="field-label">Destination type</span><span class="field-value">${isMerchant ? "Merchant" : "Customer"}</span></div>
+            <div class="field-row"><span class="field-label">Part of ring</span><span class="field-value" style="color:var(--text-faint);">Not yet implemented</span></div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function handleAction(action) {
+    const feedback = document.getElementById("action-feedback");
+    feedback.textContent = "Sending...";
+
+    submitAction(action, currentTxn)
+      .then(() => {
+        feedback.textContent = `"${action}" recorded.`;
+        loadRecentActions();
+      })
+      .catch((err) => {
+        feedback.textContent = `Failed to record action: ${err.message}. Is the Node backend running?`;
+      });
+  }
+
+  function isSameTransaction(a, b) {
+    if (!a || !b) return false;
+    return a.step === b.step && a.nameOrig === b.nameOrig && a.nameDest === b.nameDest;
+  }
+
+  function renderActionsList(list) {
+    const container = document.getElementById("recent-actions");
+    const relevant = list.filter((r) => isSameTransaction(r.transaction, currentTxn));
+    if (!relevant.length) {
+      container.innerHTML = `<div class="empty-state" style="padding:16px 0;">No actions taken yet.</div>`;
+      return;
+    }
+    container.innerHTML = relevant.map((r) => `
+      <div class="field-row">
+        <span class="field-label">${r.action} — ${r.analyst}</span>
+        <span class="field-value" style="font-size:11px;">${new Date(r.takenAt).toLocaleTimeString()}</span>
+      </div>
+    `).join("");
+  }
+
+  function loadRecentActions() {
+    fetchRecentActions(50)
+      .then(renderActionsList)
+      .catch(() => {
+        document.getElementById("recent-actions").innerHTML =
+          `<div class="empty-state" style="padding:16px 0;">Couldn't load actions — is the Node backend running?</div>`;
+      });
+  }
+
+  function renderEmpty() {
+    document.getElementById("content-wrap").innerHTML = `
+      <div class="panel"><div class="empty-state">
+        No transaction selected — go to <a href="index.html" style="color:var(--accent);">Live Monitor</a> and click any row to see its detail here.
+      </div></div>`;
+  }
+
+  const currentTxn = getSelectedTransaction();
+  if (currentTxn) {
+    renderDetail(currentTxn);
+    loadRecentActions();
+    // Live update if another analyst (or another tab) acts on this same transaction
+    document.addEventListener("fraudlens:action", loadRecentActions);
+  } else {
+    renderEmpty();
+  }
+</script>
+</body>
+</html>

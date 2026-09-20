@@ -3,4 +3,4 @@ flask-cors==4.0.1
 joblib==1.5.3
 pandas
 scikit-learn
- 
+shap
