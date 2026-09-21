@@ -8,6 +8,7 @@
 
 const express = require("express");
 const { getPrediction } = require("../services/mlService");
+const settingsRoutes = require("./settings");
 
 const router = express.Router();
 
@@ -18,6 +19,13 @@ const REQUIRED_FIELDS = [
 
 router.post("/predict", async (req, res) => {
   const transaction = req.body;
+
+  // Real effect of the "RandomForest classifier" toggle in Alerts & Rules —
+  // when disabled, detection genuinely stops instead of the toggle just
+  // changing what the UI shows.
+  if (!settingsRoutes.getSettings().modelEnabled) {
+    return res.status(503).json({ error: "Detection is currently disabled (see Alerts & Rules)" });
+  }
 
   const missing = REQUIRED_FIELDS.filter((field) => !(field in transaction));
   if (missing.length > 0) {

@@ -106,7 +106,9 @@
     const riskScore = txn.risk_score ?? 0;
     const riskCls = riskPillClass(riskScore);
     const isMerchant = String(txn.nameDest || "").startsWith("M");
-    const hasShap = Array.isArray(txn.shap_explanation) && txn.shap_explanation.length > 0;
+    const shapAvailable = Array.isArray(txn.shap_explanation) && txn.shap_explanation.length > 0;
+    const shapEnabled = getLocalSettings().showShap;
+    const hasShap = shapAvailable && shapEnabled;
 
     let explanation, factorsHtml, factorsNote;
 
@@ -132,7 +134,9 @@
         factorRow("Balance/amount mismatch", factors.mismatch),
         factorRow("Model risk score", riskScore / 100),
       ].join("");
-      factorsNote = "Heuristic signals — this transaction predates SHAP integration";
+      factorsNote = shapAvailable
+        ? "Heuristic view selected — turn SHAP explainability back on in Alerts & Rules"
+        : "Heuristic signals — this transaction predates SHAP integration";
 
       const parts = [];
       if (factors.amountRatio > 0.7) parts.push("moves nearly all of the sender's available balance");

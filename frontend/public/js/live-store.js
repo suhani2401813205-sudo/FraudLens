@@ -15,12 +15,33 @@
 const NODE_URL = "http://localhost:5000";
 const STORE_KEY = "fraudlens_transactions";
 const SELECTED_KEY = "fraudlens_selected";
+const SETTINGS_KEY = "fraudlens_settings";
 const MAX_STORED = 200; // rolling window cap
 
+// ---------- Risk threshold settings (editable on the Alerts & Rules page) ----------
+const DEFAULT_SETTINGS = { mediumThreshold: 40, highThreshold: 75 };
+
+function getSettings() {
+  try {
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+function saveSettings(partial) {
+  const merged = { ...getSettings(), ...partial };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+  return merged;
+}
+
 // ---------- Formatting / risk helpers (shared by every page) ----------
+// Thresholds are read fresh each call, so changing them on the Alerts &
+// Rules page immediately affects every page's risk pills, KPI counts,
+// and ring detection — no page-specific threshold logic anywhere else.
 function riskPillClass(riskScore) {
-  if (riskScore >= 75) return "high";
-  if (riskScore >= 40) return "medium";
+  const { mediumThreshold, highThreshold } = getSettings();
+  if (riskScore >= highThreshold) return "high";
+  if (riskScore >= mediumThreshold) return "medium";
   return "low";
 }
 function riskLabel(cls) {
@@ -59,6 +80,42 @@ function getSelectedTransaction() {
   } catch {
     return null;
   }
+}
+
+// ---------- Local UI settings (per-browser preferences, not backend state) ----------
+const LOCAL_SETTINGS_KEY = "fraudlens_local_settings";
+const DEFAULT_LOCAL_SETTINGS = { showShap: true, notifyBrowser: false };
+
+function getLocalSettings() {
+  try {
+    return { ...DEFAULT_LOCAL_SETTINGS, ...JSON.parse(localStorage.getItem(LOCAL_SETTINGS_KEY)) };
+  } catch {
+    return { ...DEFAULT_LOCAL_SETTINGS };
+  }
+}
+function setLocalSetting(key, value) {
+  const current = getLocalSettings();
+  current[key] = value;
+  localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(current));
+  return current;
+}
+
+async function enableBrowserNotifications() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  const permission = await Notification.requestPermission();
+  return permission === "granted";
+}
+
+function maybeNotify(txn) {
+  const settings = getLocalSettings();
+  if (!settings.notifyBrowser) return;
+  if ((txn.risk_score || 0) < 75) return;
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  new Notification("FraudLens — High risk transaction", {
+    body: `${txn.nameOrig} → ${txn.nameDest} · ${formatINR(txn.amount)} · risk ${txn.risk_score}%`,
+  });
 }
 
 // Every row/card that represents a transaction should call this so
@@ -107,6 +164,7 @@ function initLiveStore() {
   socket.on("transaction", (txn) => {
     setStatus(true, "Replaying held-out transactions in time order");
     const stored = addStoredTransaction(txn);
+    maybeNotify(stored);
     document.dispatchEvent(new CustomEvent("fraudlens:transaction", { detail: stored }));
   });
 
@@ -115,6 +173,28 @@ function initLiveStore() {
   socket.on("action", (record) => {
     document.dispatchEvent(new CustomEvent("fraudlens:action", { detail: record }));
   });
+
+  // routes/settings.js emits io.emit("settings", settings) when the
+  // detection toggle changes — keeps every open page in sync
+  socket.on("settings", (settings) => {
+    document.dispatchEvent(new CustomEvent("fraudlens:settings", { detail: settings }));
+  });
+}
+
+async function fetchBackendSettings() {
+  const response = await fetch(`${NODE_URL}/api/settings`);
+  if (!response.ok) throw new Error(`Failed to load settings (${response.status})`);
+  return response.json();
+}
+
+async function updateBackendSettings(partial) {
+  const response = await fetch(`${NODE_URL}/api/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(partial),
+  });
+  if (!response.ok) throw new Error(`Failed to update settings (${response.status})`);
+  return response.json();
 }
 
 // ---------- Analyst actions (Hold / Send for review / Mark as false positive) ----------

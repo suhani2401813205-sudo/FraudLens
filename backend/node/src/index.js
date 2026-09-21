@@ -9,6 +9,7 @@ const { Server } = require("socket.io");
 
 const predictRoutes = require("./routes/predict");
 const actionsRoutes = require("./routes/actions");
+const settingsRoutes = require("./routes/settings");
 const { checkMlServiceHealth } = require("./services/mlService");
 
 const PORT = process.env.PORT || 5000;
@@ -31,6 +32,7 @@ io.on("connection", (socket) => {
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 app.use("/api", predictRoutes); // -> POST /api/predict
 app.use("/api", actionsRoutes); // -> POST /api/actions, GET /api/actions
+app.use("/api", settingsRoutes); // -> GET/POST /api/settings
 
 // --- Startup: confirm the Flask ML service is reachable ---
 async function startupCheck() {
