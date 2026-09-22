@@ -5,16 +5,37 @@
 // GET  /api/actions — recent actions, so the page can show a real log
 // instead of the button just doing nothing after the click.
 //
-// Storage is in-memory (resets when the server restarts) — good enough
-// for a demo/portfolio project. Swap this for a real database (Mongo/
-// Postgres) later without changing the frontend's fetch calls.
+// Storage: SQLite (src/db.js) — persists across server restarts, unlike
+// the earlier in-memory array version.
 
 const express = require("express");
 const router = express.Router();
+const db = require("../db");
 
 const VALID_ACTIONS = ["Hold transaction", "Send for review", "Mark as false positive"];
-const actions = []; // in-memory log, newest first
-const MAX_STORED = 200;
+const MAX_LIMIT = 200;
+
+const insertStmt = db.prepare(`
+  INSERT INTO actions (id, action, transaction_json, analyst, taken_at)
+  VALUES (@id, @action, @transaction_json, @analyst, @taken_at)
+`);
+
+const selectStmt = db.prepare(`
+  SELECT id, action, transaction_json, analyst, taken_at
+  FROM actions
+  ORDER BY taken_at DESC
+  LIMIT ?
+`);
+
+function rowToRecord(row) {
+  return {
+    id: row.id,
+    action: row.action,
+    transaction: JSON.parse(row.transaction_json),
+    analyst: row.analyst,
+    takenAt: row.taken_at,
+  };
+}
 
 router.post("/actions", (req, res) => {
   const { action, transaction } = req.body || {};
@@ -34,8 +55,13 @@ router.post("/actions", (req, res) => {
     takenAt: new Date().toISOString(),
   };
 
-  actions.unshift(record);
-  if (actions.length > MAX_STORED) actions.length = MAX_STORED;
+  insertStmt.run({
+    id: record.id,
+    action: record.action,
+    transaction_json: JSON.stringify(record.transaction),
+    analyst: record.analyst,
+    taken_at: record.takenAt,
+  });
 
   // Broadcast so any open page (Transaction Detail, a future audit log
   // page, etc.) can update live without polling.
@@ -46,8 +72,9 @@ router.post("/actions", (req, res) => {
 });
 
 router.get("/actions", (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit, 10) || 20, MAX_STORED);
-  res.json(actions.slice(0, limit));
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, MAX_LIMIT);
+  const rows = selectStmt.all(limit);
+  res.json(rows.map(rowToRecord));
 });
 
 module.exports = router;

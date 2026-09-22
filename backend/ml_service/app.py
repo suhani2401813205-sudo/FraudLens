@@ -4,14 +4,19 @@ FraudLens — ML Service (Flask)
 Thin HTTP wrapper around ml/predict.py, so the Node.js backend can get
 a fraud prediction over HTTP instead of running Python itself.
 
-Run:
+Local run:
     cd backend/ml_service
     pip install -r requirements.txt
     python app.py
 
-Then Node calls: POST http://localhost:5001/predict
+Production (Render, etc.):
+    gunicorn app:app
+    (PORT is read from the environment automatically; see Procfile)
+
+Then Node calls: POST <this service's URL>/predict
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -24,7 +29,7 @@ from flask_cors import CORS
 from predict import predict_transaction  # from ml/predict.py, via the sys.path append above
 
 app = Flask(__name__)
-CORS(app)  # allows the Node backend (running on a different port) to call this API
+CORS(app)  # allows the Node backend (running on a different host/port) to call this API
 
 REQUIRED_FIELDS = [
     "step", "type", "amount", "nameOrig", "oldbalanceOrg",
@@ -60,5 +65,10 @@ def predict():
 
 
 if __name__ == "__main__":
-    # Port 5001, since Node/Express will likely use 5000 or 3000.
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    # PORT comes from the environment on Render (and most PaaS hosts);
+    # falls back to 5001 for local development.
+    port = int(os.environ.get("PORT", 5001))
+    # Debug/reloader off by default — only turn it on locally by setting
+    # FLASK_DEBUG=1, since Flask's debugger should never run in production.
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(host="0.0.0.0", port=port, debug=debug)

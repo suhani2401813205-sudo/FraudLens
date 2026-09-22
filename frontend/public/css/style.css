@@ -290,3 +290,65 @@ tbody tr:hover{background:var(--surface-2);}
 .chart-panel{padding:16px 18px;}
 .chart-panel-title{font-size:12px; color:var(--text-muted); margin-bottom:10px; font-weight:500;}
 .chart-panel canvas{max-height:180px;}
+
+/* ---------- Mobile responsive ---------- */
+@media (max-width: 768px) {
+  .app{flex-direction:column;}
+
+  /* Sidebar becomes a horizontal scrollable top bar instead of a left column */
+  .sidebar{
+    width:100%;
+    flex-direction:row;
+    align-items:center;
+    padding:10px 12px;
+    overflow-x:auto;
+    border-right:none;
+    border-bottom:1px solid var(--border);
+  }
+  .brand{
+    padding:0 12px 0 0;
+    margin-bottom:0;
+    border-bottom:none;
+    border-right:1px solid var(--border-soft);
+    flex-shrink:0;
+  }
+  .nav{flex-direction:row; gap:4px; flex-shrink:0;}
+  .nav-item{white-space:nowrap; padding:8px 10px;}
+  .nav-item svg{display:none;} /* icons drop on mobile to save space, label is enough */
+  .sidebar-foot{display:none;} /* org/analyst info isn't critical on a small screen */
+
+  .topbar{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:8px;
+    height:auto;
+    padding:12px 16px;
+  }
+  .topbar-right{width:100%; flex-wrap:wrap; gap:10px;}
+  .search{width:100%;}
+
+  .page{padding:16px;}
+
+  /* Grids collapse to a single column */
+  .kpi-row{grid-template-columns:1fr 1fr; gap:10px;}
+  .charts-row{grid-template-columns:1fr;}
+  .detail-grid{grid-template-columns:1fr;}
+  .network-layout{grid-template-columns:1fr;}
+  .rules-grid{grid-template-columns:1fr;}
+  .ring-summary-kpis{grid-template-columns:repeat(2,1fr);}
+
+  .graph-panel{height:320px;} /* shorter on mobile, still usable */
+  .ring-list{max-height:280px;}
+
+  /* Tables scroll horizontally instead of squeezing/breaking layout */
+  .panel table{display:block; overflow-x:auto; white-space:nowrap;}
+  .ring-edges-table{display:block; overflow-x:auto; white-space:nowrap;}
+
+  .kpi-value{font-size:19px;}
+  .detail-amount{font-size:22px;}
+}
+
+@media (max-width: 420px) {
+  .kpi-row{grid-template-columns:1fr;} /* very small screens: KPIs stack fully */
+  .ring-summary-kpis{grid-template-columns:1fr 1fr;}
+}

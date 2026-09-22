@@ -1,0 +1,13 @@
+{
+  "name": "fraudlens-root",
+  "version": "1.0.0",
+  "description": "Root scripts to run the whole FraudLens stack from one terminal",
+  "scripts": {
+    "start": "concurrently -n FLASK,NODE,FRONTEND -c blue,green,yellow \"cd backend/ml_service && python app.py\" \"cd backend/node && npm start\" \"cd frontend && npm start\"",
+    "demo": "concurrently -n FLASK,NODE,FRONTEND,REPLAY -c blue,green,yellow,magenta --kill-others \"cd backend/ml_service && python app.py\" \"cd backend/node && npm start\" \"cd frontend && npm start\" \"npx wait-on http://localhost:5000/api/settings && cd ml && python replay.py --demo --force-rings --speed 0.3\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0"
+  }
+}

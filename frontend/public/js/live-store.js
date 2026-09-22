@@ -12,7 +12,8 @@
  *
  * Change this if the Node backend runs somewhere other than localhost:5000
  */
-const NODE_URL = "http://localhost:5000";
+// Change this in js/config.js after deploying — not here.
+const NODE_URL = window.FRAUDLENS_NODE_URL || "http://localhost:5000";
 const STORE_KEY = "fraudlens_transactions";
 const SELECTED_KEY = "fraudlens_selected";
 const SETTINGS_KEY = "fraudlens_settings";

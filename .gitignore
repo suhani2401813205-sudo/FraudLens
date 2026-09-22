@@ -17,15 +17,24 @@ npm-debug.log*
 package-lock.json
 .env
 
+# ---------- SQLite (runtime data, regenerated on first run) ----------
+backend/node/data/*.db
+backend/node/data/*.db-wal
+backend/node/data/*.db-shm
+!backend/node/data/.gitkeep
+
 # ---------- Data (large / regenerable — see README for how to produce these) ----------
 data/raw/*.csv
 data/processed/*.csv
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# ---------- Trained model artifacts (regenerate via train.py / the notebook) ----------
-ml/model/*.pkl
-!ml/model/.gitkeep
+# ---------- Trained model artifacts ----------
+# NOTE: these ARE committed (not ignored) — Render deploys from GitHub
+# and can't regenerate them without the raw PaySim dataset, which is
+# itself excluded above. Re-run ml/train.py or the notebook locally if
+# you need to update these.
+# ml/model/*.pkl
 
 # ---------- OS / editor ----------
 .DS_Store
