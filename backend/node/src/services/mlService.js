@@ -21,7 +21,9 @@ const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:5001";
 async function getPrediction(transaction) {
   try {
     const response = await axios.post(`${ML_SERVICE_URL}/predict`, transaction, {
-      timeout: 5000, // fail fast rather than hanging the request
+      // Render's free tier can take 30-60s to wake a sleeping service —
+      // 5s was fine for local dev but far too short in production.
+      timeout: 60000,
     });
     return response.data; // { prediction, fraud_probability, risk_score }
   } catch (err) {
