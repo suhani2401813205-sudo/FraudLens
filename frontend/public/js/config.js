@@ -5,4 +5,4 @@
 // backend (e.g. to Render), replace the URL below with its real public
 // URL, e.g. "https://fraudlens-backend.onrender.com" — no trailing slash.
 
-window.FRAUDLENS_NODE_URL = "http://localhost:5000";
+window.FRAUDLENS_NODE_URL = "https://fraudlens-backend-6hzv.onrender.com";
