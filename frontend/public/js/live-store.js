@@ -180,6 +180,12 @@ function initLiveStore() {
   socket.on("settings", (settings) => {
     document.dispatchEvent(new CustomEvent("fraudlens:settings", { detail: settings }));
   });
+
+  // routes/demo.js emits io.emit("demoStatus", {running, startedAt}) when
+  // the bundled "Run Live Demo" button starts/finishes a self-contained run
+  socket.on("demoStatus", (status) => {
+    document.dispatchEvent(new CustomEvent("fraudlens:demoStatus", { detail: status }));
+  });
 }
 
 async function fetchBackendSettings() {
@@ -216,6 +222,14 @@ async function fetchRecentActions(limit = 20) {
   const response = await fetch(`${NODE_URL}/api/actions?limit=${limit}`);
   if (!response.ok) throw new Error(`Failed to load actions (${response.status})`);
   return response.json();
+}
+
+// ---------- Live demo trigger (backend replays a small bundled dataset — no local terminal needed) ----------
+async function startLiveDemo() {
+  const response = await fetch(`${NODE_URL}/api/demo/start`, { method: "POST" });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `Could not start demo (${response.status})`);
+  return body;
 }
 
 document.addEventListener("DOMContentLoaded", initLiveStore);

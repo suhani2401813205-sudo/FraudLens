@@ -117,7 +117,7 @@ def replay(df, node_url, seconds_per_step, limit=None):
         actual_fraud = bool(row.get("isFraud", 0))
 
         try:
-            response = requests.post(f"{node_url}/api/predict", json=transaction, timeout=5)
+            response = requests.post(f"{node_url}/api/predict", json=transaction, timeout=60)
             response.raise_for_status()
             result = response.json()
             sent += 1

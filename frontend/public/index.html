@@ -46,6 +46,7 @@
     <div class="topbar">
       <div class="topbar-title">NovaBank · <strong>Live Transaction Monitor</strong></div>
       <div class="topbar-right">
+        <button id="demo-btn" onclick="handleStartDemo()" style="padding:7px 14px; border-radius:6px; font-size:12.5px; font-weight:600; border:1px solid var(--accent); background:var(--accent-dim); color:var(--accent); cursor:pointer; font-family:inherit; white-space:nowrap;">▶ Run Live Demo</button>
         <span class="live-dot offline" id="live-dot"><span class="pulse"></span><span id="stream-status-text">Connecting...</span></span>
         <input class="search" placeholder="Search account or txn ID" id="search-box">
       </div>
@@ -101,7 +102,7 @@
           </thead>
           <tbody id="live-feed-body"></tbody>
         </table>
-        <div class="empty-state" id="empty-state">No transactions yet — run <code>python replay.py</code> in the <code>ml/</code> folder to start the feed.</div>
+        <div class="empty-state" id="empty-state">No transactions yet — click <strong>"▶ Run Live Demo"</strong> above (no setup needed), or run <code>python replay.py</code> locally in the <code>ml/</code> folder.</div>
       </div>
     </div>
   </div>
@@ -283,6 +284,27 @@
       if (matchesSearch(txn)) renderRow(txn);
     });
   });
+
+  // ---------- Run Live Demo button ----------
+  function setDemoButtonState(running) {
+    const btn = document.getElementById("demo-btn");
+    btn.disabled = running;
+    btn.textContent = running ? "● Demo running..." : "▶ Run Live Demo";
+    btn.style.opacity = running ? "0.6" : "1";
+    btn.style.cursor = running ? "not-allowed" : "pointer";
+  }
+
+  async function handleStartDemo() {
+    setDemoButtonState(true);
+    try {
+      await startLiveDemo();
+    } catch (err) {
+      alert(`Couldn't start demo: ${err.message}`);
+      setDemoButtonState(false);
+    }
+  }
+
+  document.addEventListener("fraudlens:demoStatus", (e) => setDemoButtonState(e.detail.running));
 </script>
 </body>
 </html>
