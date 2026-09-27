@@ -63,6 +63,19 @@ function getStoredTransactions() {
 
 function addStoredTransaction(txn) {
   const list = getStoredTransactions();
+
+  // De-dupe: the same transaction (same step/accounts/amount) showing up
+  // again — e.g. because replay.py was re-run — would otherwise inflate
+  // Network View's "connections" count and total-moved figures with
+  // repeats of the same real transaction, not genuinely new activity.
+  const isDuplicate = list.some((existing) =>
+    existing.step === txn.step &&
+    existing.nameOrig === txn.nameOrig &&
+    existing.nameDest === txn.nameDest &&
+    existing.amount === txn.amount
+  );
+  if (isDuplicate) return null; // signal to callers: don't count/render/notify this one
+
   // Give each transaction a stable-enough id for this session (no real
   // transaction id exists upstream yet) so pages can key off it.
   txn._id = `${txn.step}-${txn.nameOrig}-${txn.nameDest}-${Date.now()}`;
@@ -165,6 +178,7 @@ function initLiveStore() {
   socket.on("transaction", (txn) => {
     setStatus(true, "Replaying held-out transactions in time order");
     const stored = addStoredTransaction(txn);
+    if (!stored) return; // duplicate — already in the store, don't double-count it anywhere
     maybeNotify(stored);
     document.dispatchEvent(new CustomEvent("fraudlens:transaction", { detail: stored }));
   });
