@@ -16,14 +16,27 @@ Usage:
     python replay.py --limit 100          # only replay first 100 rows (in time order)
     python replay.py --demo               # curated mix: guarantees some fraud cases show up
     python replay.py --demo --demo-fraud 10 --demo-normal 40
+    python replay.py --demo --force-rings # also guarantees ring-forming transactions are included
+    python replay.py --loop               # keep replaying on repeat until Ctrl+C
+    python replay.py --export out.csv     # write the curated/selected set to a CSV instead of replaying
     python replay.py --node-url http://localhost:5000
 """
 
 import argparse
+import os
+import sys
 import time
 import requests
 import pandas as pd
 from pathlib import Path
+
+# Make console output safe on Windows terminals using legacy codepages
+# (cp1252 etc. can't encode certain Unicode characters and will crash
+# the whole script mid-run) — reconfigure to UTF-8 where possible.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "processed" / "test.csv"
 
@@ -37,11 +50,12 @@ TRANSACTION_FIELDS = [
 ]
 
 
-def load_test_stream():
-    df = pd.read_csv(DATA_PATH)
+def load_test_stream(path=None):
+    data_path = Path(path) if path else DATA_PATH
+    df = pd.read_csv(data_path)
     missing = [f for f in TRANSACTION_FIELDS if f not in df.columns]
     if missing:
-        raise ValueError(f"test.csv is missing expected columns: {missing}")
+        raise ValueError(f"{data_path.name} is missing expected columns: {missing}")
 
     df = df.sort_values("step").reset_index(drop=True)
     return df
@@ -74,9 +88,9 @@ def build_demo_stream(df, n_fraud=10, n_normal=40, seed=42, force_rings=False):
             ring_mask = fraud_rows["nameOrig"].isin(repeated_accounts) | fraud_rows["nameDest"].isin(repeated_accounts)
             ring_rows = fraud_rows[ring_mask]
             print(f"Ring-focused mode: found {len(ring_rows)} fraud transactions "
-                  f"across {len(repeated_accounts)} account(s) that repeat — including all of them.")
+                  f"across {len(repeated_accounts)} account(s) that repeat - including all of them.")
         else:
-            print("Ring-focused mode: no repeated accounts found among fraud rows — no rings possible with this data.")
+            print("Ring-focused mode: no repeated accounts found among fraud rows - no rings possible with this data.")
 
     remaining_fraud_needed = max(n_fraud - len(ring_rows), 0)
     fraud_pool = fraud_rows.drop(ring_rows.index)
@@ -90,28 +104,22 @@ def build_demo_stream(df, n_fraud=10, n_normal=40, seed=42, force_rings=False):
     return demo_df
 
 
-def replay(df, node_url, seconds_per_step, limit=None):
-    if limit:
-        df = df.head(limit)
-
+def replay(df, node_url, seconds_per_step):
     total = len(df)
-    print(f"Replaying {total} transactions from {DATA_PATH.name} to {node_url} ...")
-    print(f"Ground truth (isFraud) is tracked here for your own comparison only — "
+    print(f"Replaying {total} transactions from test.csv to {node_url} ...")
+    print(f"Ground truth (isFraud) is tracked here for your own comparison only - "
           f"it is NOT sent to the API, since a real live feed wouldn't have it.\n")
 
     last_step = None
     sent, flagged, errors = 0, 0, 0
 
     for _, row in df.iterrows():
-        # Pace playback by the gap between real transaction steps, scaled
-        # by seconds_per_step, rather than firing every row instantly.
         if last_step is not None:
             gap = max(row["step"] - last_step, 0)
             time.sleep(gap * seconds_per_step)
         last_step = row["step"]
 
         transaction = {field: row[field] for field in TRANSACTION_FIELDS}
-        # numpy types (e.g. np.float64) don't JSON-serialize cleanly — cast to plain Python types
         transaction = {k: (v.item() if hasattr(v, "item") else v) for k, v in transaction.items()}
 
         actual_fraud = bool(row.get("isFraud", 0))
@@ -127,10 +135,12 @@ def replay(df, node_url, seconds_per_step, limit=None):
             if predicted == "Fraud":
                 flagged += 1
 
-            match = "✓" if (predicted == "Fraud") == actual_fraud else "✗"
+            # ASCII-only markers (no Unicode checkmarks) so this never
+            # crashes on Windows terminals using a legacy codepage (cp1252).
+            match = "OK" if (predicted == "Fraud") == actual_fraud else "MISS"
             print(f"[step {row['step']:>3}] {transaction['nameOrig']} -> {transaction['nameDest']} "
                   f"| amount={transaction['amount']:.2f} | predicted={predicted} (risk={risk}) "
-                  f"| actual_fraud={actual_fraud} {match}")
+                  f"| actual_fraud={actual_fraud} [{match}]")
 
         except requests.exceptions.RequestException as e:
             errors += 1
@@ -141,14 +151,14 @@ def replay(df, node_url, seconds_per_step, limit=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--node-url", default="http://localhost:5000",
+    parser.add_argument("--node-url", default=os.environ.get("NODE_URL", "http://localhost:5000"),
                          help="Base URL of the Node backend")
     parser.add_argument("--speed", type=float, default=2.0,
                          help="Seconds of real time per simulated hour (step). Lower = faster playback.")
     parser.add_argument("--limit", type=int, default=None,
                          help="Only replay the first N transactions, in time order (ignored if --demo is set)")
     parser.add_argument("--demo", action="store_true",
-                         help="Curated mix guaranteeing some fraud cases — use this for presentations")
+                         help="Curated mix guaranteeing some fraud cases - use this for presentations")
     parser.add_argument("--demo-fraud", type=int, default=10,
                          help="Number of fraud cases to include in --demo mode")
     parser.add_argument("--demo-normal", type=int, default=40,
@@ -156,15 +166,37 @@ def main():
     parser.add_argument("--force-rings", action="store_true",
                          help="With --demo: guarantee any ring-forming fraud transactions are included, "
                               "so the Network View has something to show")
+    parser.add_argument("--file", type=str, default=None,
+                         help="Use a different CSV than data/processed/test.csv")
+    parser.add_argument("--export", type=str, default=None,
+                         help="Write the curated/selected transaction set to this CSV path instead of replaying")
+    parser.add_argument("--loop", action="store_true",
+                         help="Keep replaying the same curated set on repeat, until Ctrl+C - "
+                              "handy for a demo/booth where you don't want to keep re-running the command")
     args = parser.parse_args()
 
-    df = load_test_stream()
+    df = load_test_stream(args.file)
 
     if args.demo:
         df = build_demo_stream(df, n_fraud=args.demo_fraud, n_normal=args.demo_normal,
                                 force_rings=args.force_rings)
-        args.limit = None  # demo mode already picked its own rows, don't slice further
-    replay(df, args.node_url, args.speed, args.limit)
+    elif args.limit:
+        df = df.head(args.limit)
+
+    if args.export:
+        df.to_csv(args.export, index=False)
+        print(f"Exported {len(df)} transactions to {args.export}")
+        return
+
+    if args.loop:
+        print("Loop mode: replaying continuously until you press Ctrl+C.\n")
+        try:
+            while True:
+                replay(df, args.node_url, args.speed)
+        except KeyboardInterrupt:
+            print("\nStopped.")
+    else:
+        replay(df, args.node_url, args.speed)
 
 
 if __name__ == "__main__":
