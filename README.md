@@ -208,3 +208,5 @@ notebook), commit the new `.pkl` files, push — Render redeploys automatically.
 - Basic authentication so actions attribute to the real logged-in analyst
 - Autoencoder-based anomaly detection as a second model alongside the classifier
 - Move from SQLite to PostgreSQL for the actions store
+
+

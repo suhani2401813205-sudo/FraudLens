@@ -61,6 +61,13 @@ function getStoredTransactions() {
   }
 }
 
+// Wipes the stored transaction history (e.g. old duplicates from before
+// de-duplication existed, or just to start a fresh demo). Does NOT
+// reload the page — callers should re-render/reset their own UI after.
+function clearStore() {
+  localStorage.removeItem(STORE_KEY);
+}
+
 function addStoredTransaction(txn) {
   const list = getStoredTransactions();
 
@@ -79,6 +86,11 @@ function addStoredTransaction(txn) {
   // Give each transaction a stable-enough id for this session (no real
   // transaction id exists upstream yet) so pages can key off it.
   txn._id = `${txn.step}-${txn.nameOrig}-${txn.nameDest}-${Date.now()}`;
+  // Store the REAL arrival time once, here — not recomputed every time
+  // a row is rendered. Without this, reopening/reloading the page makes
+  // every stored row show the reload moment as its "Time", not when it
+  // actually arrived.
+  txn._receivedAt = Date.now();
   list.unshift(txn);
   if (list.length > MAX_STORED) list.length = MAX_STORED;
   localStorage.setItem(STORE_KEY, JSON.stringify(list));

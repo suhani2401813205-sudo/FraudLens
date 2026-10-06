@@ -211,7 +211,12 @@
 
   function renderRow(txn) {
     const tbody = document.getElementById("live-feed-body");
-    const time = new Date().toLocaleTimeString();
+    // Use the real stored arrival time if we have one (txn._receivedAt is
+    // set once in addStoredTransaction) — falls back to "now" only for
+    // transactions saved before this fix existed.
+    const time = txn._receivedAt
+      ? new Date(txn._receivedAt).toLocaleTimeString()
+      : new Date().toLocaleTimeString();
     const riskCls = riskPillClass(txn.risk_score || 0);
 
     const row = document.createElement("tr");
@@ -304,7 +309,17 @@
     }
   }
 
-  document.addEventListener("fraudlens:demoStatus", (e) => setDemoButtonState(e.detail.running));
+  document.addEventListener("fraudlens:demoStatus", (e) => {
+    setDemoButtonState(e.detail.running);
+    const lastRun = e.detail.lastRun;
+    if (lastRun && lastRun.success === 0 && lastRun.failed > 0) {
+      alert(
+        `Demo ran but every prediction failed (${lastRun.failed}/${lastRun.total}).\n\n` +
+        `Last error: ${lastRun.lastError}\n\n` +
+        `This usually means the Flask ML service is still waking up (Render free tier) — wait ~30s and try again, or check the Node service logs.`
+      );
+    }
+  });
 </script>
 </body>
 </html>

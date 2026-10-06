@@ -22,7 +22,7 @@ const DEMO_DATA_PATH = path.join(__dirname, "..", "..", "data", "demo-transactio
 const demoTransactions = JSON.parse(fs.readFileSync(DEMO_DATA_PATH, "utf-8"))
   .sort((a, b) => a.step - b.step);
 
-const SECONDS_PER_STEP = 0.4; // fixed, fast pace — this is a short showcase run, not a full simulation
+const SECONDS_PER_STEP = 1.0; // ~2-6s between most transactions — clearly visible one-by-one, not bursty
 
 let demoState = { running: false, startedAt: null };
 
@@ -33,6 +33,10 @@ function sleep(ms) {
 async function runDemo(io) {
   demoState = { running: true, startedAt: new Date().toISOString() };
   io.emit("demoStatus", demoState);
+
+  let successCount = 0;
+  let failCount = 0;
+  let lastErrorMessage = null;
 
   let lastStep = null;
   for (const transaction of demoTransactions) {
@@ -49,14 +53,21 @@ async function runDemo(io) {
     try {
       const result = await getPrediction(transaction);
       io.emit("transaction", { ...transaction, ...result });
+      successCount += 1;
     } catch (err) {
+      failCount += 1;
+      lastErrorMessage = err.message;
       console.error("Demo run: prediction failed for one transaction:", err.message);
       // Keep going — one failed call (e.g. a cold-starting ML service)
       // shouldn't kill the whole demo run.
     }
   }
 
-  demoState = { running: false, startedAt: null };
+  demoState = {
+    running: false,
+    startedAt: null,
+    lastRun: { total: demoTransactions.length, success: successCount, failed: failCount, lastError: lastErrorMessage },
+  };
   io.emit("demoStatus", demoState);
 }
 
